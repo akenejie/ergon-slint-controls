@@ -1,8 +1,8 @@
 [package]
-name = "my-ergon-slint"
+name = "ergon-slint-controls"
 version = "0.1.0"
 edition = "2021"
-links = "my-ergon-slint"
+links = "ergon-slint-controls"
 
 [lib]
 path = "src/lib.rs"
