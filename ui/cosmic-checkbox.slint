@@ -1,0 +1,24 @@
+export component CosmicCheckBox inherits Rectangle {
+	in property <bool> checked;
+	in property <color> checked-color: #4a90d9;
+
+	width: 16px;
+	height: 16px;
+	vertical-stretch: 0;
+	border-radius: 4px;
+	border-width: 1px;
+	border-color: root.checked ? root.checked-color : #888;
+	background: root.checked ? root.checked-color : #fff;
+
+	animate background, border-color { duration: 150ms; }
+
+	if (root.checked) : Image {
+		source: @image-url("_check-mark.svg");
+		width: 12px;
+		height: 12px;
+		x: (parent.width - self.width) / 2;
+		y: (parent.height - self.height) / 2;
+		colorize: #fff;
+		image-fit: contain;
+	}
+}

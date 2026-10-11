@@ -1,0 +1,51 @@
+﻿export component StyledTooltip {
+	in property <string> text;
+	in property <length> mouse-x;
+	in property <length> mouse-y;
+	in property <length> host-width;
+	in property <length> host-height;
+	in property <bool> active;
+
+	if active && text != "" : Rectangle {
+		property <length> tw: tip-text.preferred-width + 8px;
+		property <length> th: tip-text.preferred-height + 4px;
+		property <length> pad: 4px;
+		// Prefer right-bottom; if overflow, try right-top, left-bottom, left-top
+		property <bool> fits-rb: (mouse-x + pad + tw <= host-width - 2px) && (mouse-y + pad + th <= host-height - 2px);
+		property <bool> fits-rt: (mouse-x + pad + tw <= host-width - 2px) && (mouse-y - pad - th >= 2px);
+		property <bool> fits-lb: (mouse-x - pad - tw >= 2px) && (mouse-y + pad + th <= host-height - 2px);
+		property <bool> fits-lt: (mouse-x - pad - tw >= 2px) && (mouse-y - pad - th >= 2px);
+		x: fits-rb ? (mouse-x + pad) :
+		   fits-rt ? (mouse-x + pad) :
+		   fits-lb ? (mouse-x - pad - tw) :
+		   fits-lt ? (mouse-x - pad - tw) :
+		   // fallback: clamp to edges
+		   min(mouse-x + pad, host-width - tw - 2px);
+		y: fits-rb ? (mouse-y + pad) :
+		   fits-rt ? (mouse-y - pad - th) :
+		   fits-lb ? (mouse-y + pad) :
+		   fits-lt ? (mouse-y - pad - th) :
+		   min(mouse-y + pad, host-height - th - 2px);
+		width: tw;
+		height: th;
+		background: #ffffff;
+		border-color: #00000040;
+		border-width: 0.5px;
+		border-radius: 3px;
+		drop-shadow-color: #00000033;
+		drop-shadow-offset-y: 1px;
+		drop-shadow-blur: 2px;
+		z: 999999;
+
+		tip-text := Text {
+			x: 4px;
+			y: 2px;
+			width: self.preferred-width;
+			height: self.preferred-height;
+			text: root.text;
+			font-size: 1rem;
+			color: #202020;
+			vertical-alignment: center;
+		}
+	}
+}

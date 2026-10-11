@@ -1,0 +1,143 @@
+// Copyright © SixtyFPS GmbH <info@slint.dev>
+// SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
+//
+// Fluent-styled menu bar controls, adapted from
+// i-slint-compiler widgets/fluent/menu.slint so that they can be embedded in
+// the window (rather than shown as native / runtime-managed menus) and so that
+// the currently highlighted item can be reported back to the application for
+// the bottom status line.
+//
+// Only the light color-scheme values are used here, matching the rest of the
+// application's fixed colors.
+
+import { MenuBarItemBase, MenuBarBase, MenuFrameBase, MenuItemBase } from "menu-base.slint";
+
+/// Top-level menu bar button. Exposes the hover state and a description that
+/// the application shows in its bottom status line.
+export component FluentMenuBarItem {
+	in property <MenuEntry> entry;
+	in property <string> description;
+	in property <string> access-key: "";
+	in property <bool> access-key-underline: false;
+	// このボタンのメニューを開いている間は背景色を付ける。
+	in property <bool> menu-open: false;
+	callback clicked;
+	callback hovered;
+
+	out property <string> hover-description: base.has-hover ? root.description : "";
+
+	min-width: base.min-width;
+	min-height: base.min-height;
+
+	base := MenuBarItemBase {
+		entry: root.entry;
+		access-key: root.access-key;
+		access-key-underline: root.access-key-underline;
+		menu-open: root.menu-open;
+		font-size: 1.0909rem;
+		horizontal-padding: 8px;
+		top-padding: 0px;
+		bottom-padding: 4px;
+		default-foreground: #000000E6;
+		hover-foreground: #000000E6;
+		pressed-foreground: #00000099;
+		hover-background: #0000000A;
+		pressed-background: #0000000F;
+		open-background: #00000014;
+		border-radius: 3px;
+
+		clicked => { root.clicked(); }
+		hovered => { root.hovered(); }
+	}
+}
+
+export component FluentMenuBar inherits MenuBarBase {
+	spacing: 2px;
+	min-layout-height: 21px;
+	// Windows 10 標準風: 背景は白 (下端の灰色下線は FluentMenuBarImpl 側)。
+	background: #FFFFFF;
+}
+
+/// Copied from the bar part of `MenuBarImpl` in
+/// i-slint-compiler widgets/common/menus.slint. The upstream component also
+/// owns the `ContextMenuInternal` dropdown; here the dropdown is rendered by
+/// the application as a normal in-window overlay (see main.slint) so that the
+/// hovered entry stays observable. `@children` lets the application provide
+/// its (static) `FluentMenuBarItem`s.
+export component FluentMenuBarImpl {
+	preferred-width: 100%;
+	height: base.min-height;
+
+	base := FluentMenuBar {
+		width: 100%;
+		@children
+	}
+
+	// Windows 10 標準風: 下端 2px の灰色下線。バーの上に重ねて描く
+	// (TouchArea ではないのでクリックは下のメニューボタンへ通る)。
+	Rectangle {
+		x: 0;
+		y: root.height - 2px;
+		width: 100%;
+		height: 2px;
+		background: #E5E5E5;
+	}
+}
+
+export component FluentMenuFrame inherits MenuFrameBase {
+	background: #FAFAFA;
+	border-radius: 3px;
+	border-width: 1px;
+	border-color: #00000026;
+	drop-shadow-color: #00000020;
+	drop-shadow-offset-y: 4px;
+	drop-shadow-blur: 8px;
+	margin: 3px;
+	layout-min-width: 160px;
+}
+
+/// A single dropdown entry. `is-current` is driven by the parent (from the
+/// base's set-current/clear-current callbacks); `activated` is fired when the
+/// user picks the entry.
+export component FluentMenuItem {
+	in property <MenuEntry> entry <=> base.entry;
+	in property <bool> is-current <=> base.is-current;
+	in property <string> access-key: "";
+	in property <bool> access-key-underline: false;
+	// タイトル末尾の "..." を括弧閉じの後ろに回すためのフラグ。
+	in property <bool> ellipsis: false;
+	// 項目の右側に出すショートカット表記 (例 "Ctrl+Z")。
+	in property <string> shortcut-text: "";
+
+	callback set-current <=> base.set-current;
+	callback clear-current <=> base.clear-current;
+	callback activated;
+
+	min-height: entry.is-separator ? 7px : max(22px, base.min-height);
+	max-height: entry.is-separator ? 7px : base.max-height;
+
+	HorizontalLayout {
+		padding: entry.is-separator ? 3px : 1px;
+		padding-left: entry.is-separator ? 0px : 1px;
+		padding-right: entry.is-separator ? 0px : 1px;
+
+		base := MenuItemBase {
+			access-key: root.access-key;
+			access-key-underline: root.access-key-underline;
+			ellipsis: root.ellipsis;
+			shortcut-text: root.shortcut-text;
+			default-foreground: #000000E6;
+			alternate-foreground: #00000099;
+			current-foreground: #000000E6;
+			current-background: #0000000A;
+			separator-color: #00000026;
+			border-radius: 2px;
+			font-size: 1.0909rem;
+			horizontal-padding: 8px;
+			spacing: 6px;
+			icon-size: 12px;
+
+			activate(e, y) => { root.activated(); }
+		}
+	}
+}
