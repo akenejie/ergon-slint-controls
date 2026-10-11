@@ -1,0 +1,46 @@
+[package]
+name = "my-ergon-slint"
+version = "0.1.0"
+edition = "2021"
+links = "my-ergon-slint"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# アプリと同じ slint インスタンスが使われる (Cargo の feature 統合)。
+# 生成コードが参照する型・backend を揃えるため、アプリ側と同じ features を指定する。
+slint = { version = "1.17", features = ["std", "backend-winit", "renderer-femtovg", "compat-1-2", "unstable-winit-030"] }
+png = "0.18"
+
+[target.'cfg(windows)'.dependencies]
+# dialogs::prompt_folder の IFileOpenDialog は windows クレートの
+# windows::Win32::UI::Shell 経由で呼ぶ。
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
+# cursor::* は Gdi (DIBSection/CreateBitmap) と WindowsAndMessaging
+# (CreateIconIndirect/LoadCursor/SetWindowLongPtr) を使う。
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_UI_Controls",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# cursor::set_custom_cursor は X11 の Render 拡張で ARGB32 のカスタムカーソルを
+# 作る。gtk モジュール / dialogs も x11rb を使い、ダイアログの X 窓へ
+# WM_TRANSIENT_FOR を設定して親ウィンドウ基準のモーダル配置にする。winit 0.30 は
+# xlib_window を公開しないため、自プロセスのトップレベルウィンドウを x11rb 接続
+# から探して change_window_attributes で差し替える。
+x11rb = { version = "0.13", features = ["render", "image"] }
+# gtk モジュール: 同一プロセス内の GTK 標準ダイアログ (MessageDialog /
+# FileChooserDialog) をモーダルにブロック実行する。ビルドには libgtk-3-dev
+# (pkg-config の `gtk+-3.0`) が必要。
+gtk = "0.18"
+
+[build-dependencies]
+# as_library() を使うには experimental-module-builds が必要。
+slint-build = { version = "1.17", features = ["experimental-module-builds"] }

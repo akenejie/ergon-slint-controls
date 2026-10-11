@@ -1,0 +1,143 @@
+// SmallButton
+// slint標準(fluent)の button.slint のデザイン一式を移植した、一時動作の
+// プッシュボタン。トグルではなく「押したら何かが起きる」ボタンで、checked
+// 状態は持たない (ModeToggleButton との違い)。
+//
+// なぜ std の Button を使わないか: 標準 Button の内部 Text には font-size が
+// 生えておらず、インスタンス側から文字サイズを変更できない ("Unknown property
+// font-size in Button")。そこで fluent ボタンの見た目を保ったまま、ボタン
+// 文字のフォントサイズだけメッセージボックスのボタンと同じ 9pt に固定して
+// こちらを使う。
+// ライブラリ側(i-slint-compiler/widgets/fluent/button.slint)は変更しない。
+
+import { AppTooltip } from "project-tooltip.slint";
+
+export component SmallButton inherits Rectangle {
+	in property <string> text;
+	// マウスを重ねると出る説明。空ならツールチップを出さない。
+	in property <string> tooltip-text;
+	in property <image> icon;
+	in property <length> icon-size: 20px;
+	in property <bool> primary;
+	in property <bool> enabled <=> i-touch-area.enabled;
+	in property <bool> colorize-icon;
+	out property <bool> has-focus: i-focus-scope.has-focus;
+	out property <bool> pressed: self.enabled && i-touch-area.pressed;
+
+	callback clicked;
+
+	private property <brush> text-color: root.primary ? #FFFFFF : #000000E6;
+
+	min-width: max(32px, i-layout.min-width);
+	min-height: max(24px, i-layout.min-height);
+	horizontal-stretch: 0;
+	vertical-stretch: 0;
+	forward-focus: i-focus-scope;
+
+	accessible-role: button;
+	accessible-enabled: root.enabled;
+	accessible-label: root.text;
+	accessible-action-default => { i-touch-area.clicked(); }
+
+	states [
+		disabled when !root.enabled : {
+			i-background.background: root.primary ? #00000038 : #F9F9F94D;
+			i-border.border-color: root.primary ? transparent : #00000073;
+			root.text-color: root.primary ? #FFFFFF : #0000005E;
+		}
+		pressed when root.pressed : {
+			i-background.background: root.primary ? #005FB8B3 : #F9F9F94D;
+			i-border.border-color: #00000073;
+			root.text-color: root.primary ? #FFFFFFB3 : #00000099;
+		}
+		hover when i-touch-area.has-hover : {
+			i-background.background: root.primary ? #005FB8E6 : #F9F9F980;
+		}
+	]
+
+	i-background := Rectangle {
+		border-radius: 4px;
+		background: root.primary ? #005FB8 : #FFFFFFB3;
+
+		animate background, border-color { duration: 150ms; }
+
+		i-border := Rectangle {
+			border-radius: parent.border-radius;
+			border-width: 1px;
+			border-color: root.primary ? @linear-gradient(180deg, #FFFFFF14 90.67%, #00000066 100%) : @linear-gradient(180deg, #0000000F 90.58%, #00000029 100%);
+		}
+
+		i-layout := HorizontalLayout {
+			padding-left: 12px;
+			padding-right: 12px;
+			padding-top: 3px;
+			padding-bottom: 3px;
+			spacing: 4px;
+			alignment: center;
+
+			if (root.icon.width > 0 && root.icon.height > 0) : Image {
+				y: (parent.height - self.height) / 2;
+				source <=> root.icon;
+				width: root.icon-size;
+				min-height: root.icon-size;
+				colorize: root.colorize-icon ? root.text-color : transparent;
+			}
+
+			if (root.text != ""): Text {
+				font-size: 1.0909rem;
+				font-weight: FontWeight.normal;
+				horizontal-alignment: center;
+				vertical-alignment: center;
+				text: root.text;
+				color: root.text-color;
+				animate color { duration: 150ms; }
+				accessible-role: none;
+			}
+		}
+	}
+
+	i-touch-area := TouchArea {
+		clicked => {
+			root.clicked();
+		}
+	}
+
+	i-focus-scope := FocusScope {
+		x: 0;
+		width: 0; // Do not react on clicks
+		enabled <=> root.enabled;
+
+		key-pressed(event) => {
+			if (event.text == " " || event.text == "\n") {
+				i-touch-area.clicked();
+				return accept;
+			}
+
+			return reject;
+		}
+	}
+
+	// focus border (standard FocusBorder 相当)
+	if (root.has-focus && root.enabled) : Rectangle {
+		border-radius: i-background.border-radius;
+		border-width: 2px;
+		border-color: #000000E6;
+
+		Rectangle {
+			x: parent.border-width;
+			y: parent.border-width;
+			width: parent.width - 2 * parent.border-width;
+			height: parent.height - 2 * parent.border-width;
+			border-width: 1px;
+			border-radius: parent.border-radius - 2px;
+			border-color: #FFFFFF;
+		}
+	}
+
+	// マウスを重ねると、ポインタの近くに説明を表示する (空なら出さない)。
+	if root.tooltip-text != "" : Tooltip {
+		AppTooltip {
+			text: root.tooltip-text;
+		}
+	}
+}

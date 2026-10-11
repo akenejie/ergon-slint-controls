@@ -1,0 +1,247 @@
+// SpinBox
+// slint 標準 (fluent) の spinbox.slint + common/spinbox-base.slint をアプリ
+// 内に移植したもの (SmallButton / ModeToggleButton と同じ方式)。FluentPalette
+// / Icons の依存を外すため、ライト配色の値と chevron アイコン (ui/ 配下の
+// _chevron-*.svg) をローカル参照に置き換えている。
+//
+// 標準からの変更点: min-width を 128px から縮小し (140px 幅のサイドバーへ
+// 収める)、矢印ボタンと余白も縮めた。縦も潰して (min-height 20px・文字
+// 11px) サイドバーのほかの行と同じくらいの高さにした。
+// ライブラリ側 (i-slint-compiler/widgets/fluent/*) は変更しない。
+
+
+import { AppTooltip } from "project-tooltip.slint";
+export component SpinBoxBase {
+	in property <int> minimum;
+	in property <int> maximum: 100;
+	in property <bool> enabled: true;
+	in property <brush> color <=> text-input.color;
+	in property <length> font-size <=> text-input.font-size;
+	in property <int> font-weight <=> text-input.font-weight;
+	in property <color> selection-background-color <=> text-input.selection-background-color;
+	in property <color> selection-foreground-color <=> text-input.selection-foreground-color;
+	in property <TextHorizontalAlignment> horizontal-alignment <=> text-input.horizontal-alignment;
+	in property <int> step-size: 1;
+	in property <bool> read-only;
+	out property <bool> has-focus <=> text-input.has-focus;
+	in-out property <int> value: minimum;
+
+	callback edited(value: int);
+
+	public function update-value(value: int) {
+		if root.value == value || (value >= root.minimum && value <= root.maximum) {
+			root.value = value;
+			root.edited(value);
+		}
+	}
+
+	public function increment() {
+		if !root.read-only {
+			root.update-value(root.value + root.step-size);
+		}
+	}
+
+	public function decrement() {
+		if !root.read-only {
+			root.update-value(root.value - root.step-size);
+		}
+	}
+
+	private property <length> scroll-delta: 2px;
+
+	forward-focus: text-input;
+
+	changed value => {
+		root.set-text-to-value();
+	}
+
+	function set-text-to-value() {
+		text-input.text = root.value;
+	}
+
+	i-touch-area := TouchArea {
+		enabled: root.enabled && !root.read-only;
+
+		scroll-event(event) => {
+			if event.delta-y > 0 {
+				root.increment();
+				return accept;
+			}
+
+			if event.delta-y < 0 {
+				root.decrement();
+				return accept;
+			}
+
+			reject
+		}
+	}
+
+	text-input := TextInput {
+		vertical-alignment: center;
+		horizontal-alignment: left;
+		text: root.value;
+		enabled: root.enabled;
+		read-only: root.read-only;
+		width: 100%;
+		height: 100%;
+
+		accessible-role: none;
+
+		accepted => {
+			if !self.text.is-float() {
+				root.set-text-to-value();
+			}
+		}
+
+		edited => {
+			if self.text.is-float() && self.text.to-float() != root.value {
+				root.update-value(self.text.to-float());
+			} else if !self.text.is-float() && self.text != "" {
+				root.set-text-to-value();
+			}
+		}
+	}
+}
+
+export component SpinBoxButton {
+	callback clicked <=> touch-area.clicked;
+
+	in property <image> icon <=> icon.source;
+
+	min-width: 20px;
+	horizontal-stretch: 0;
+
+	states [
+		pressed when touch-area.pressed : {
+			background.background: #0000000A;
+		}
+	]
+
+	background := Rectangle {
+		border-radius: 3px;
+
+		icon := Image {
+			image-fit: contain;
+			colorize: #00000099;
+			width: 12px;
+			// height を明示しないと SVG の実寸基準で算出され、button が
+			// 必要以上に縦に膨張する (実測 ~66px)。12px に固定する。
+			height: 12px;
+			accessible-role: none;
+
+			animate colorize { duration: 150ms; }
+		}
+	}
+
+	touch-area := TouchArea {}
+}
+
+
+export component SpinBox {
+	in property <int> minimum <=> base.minimum;
+	in property <int> maximum <=> base.maximum;
+	in property <bool> enabled <=> base.enabled;
+	in property <int> step-size <=> base.step-size;
+	in property <bool> read-only <=> base.read-only;
+	in property <TextHorizontalAlignment> horizontal-alignment <=> base.horizontal-alignment;
+	// マウスを重ねると出る説明。空ならツールチップを出さない。
+	in property <string> tooltip-text;
+	out property <bool> has-focus <=> base.has-focus;
+	in-out property <int> value <=> base.value;
+
+	callback edited <=> base.edited;
+
+	// 128px -> サイドバー用に縮小 (矢印ボタン・余白も以下で縮小)。
+	min-width: max(64px, layout.min-width);
+	min-height: max(20px, layout.min-height);
+	vertical-stretch: 0;
+	horizontal-stretch: 1;
+	forward-focus: base;
+
+	accessible-role: spinbox;
+	accessible-enabled: root.enabled;
+	accessible-value: root.value;
+	accessible-value-minimum: root.minimum;
+	accessible-value-maximum: root.maximum;
+	accessible-value-step: (root.maximum - root.minimum) / 100;
+	accessible-action-set-value(v) => { if v.is-float() { base.update-value(v.to-float()); } }
+	accessible-action-increment => { base.increment(); }
+	accessible-action-decrement => { base.decrement(); }
+	accessible-read-only: root.read-only;
+
+	states [
+		disabled when !root.enabled : {
+			background.background: #F9F9F94D;
+			background.border-color: #00000073;
+			base.color: #0000005E;
+			base.selection-foreground-color: #FFFFFF;
+		}
+		focused when root.has-focus : {
+			background.background: #FFFFFF;
+			background.border-color: #00000073;
+			focus-border.background: #005FB8;
+		}
+	]
+
+	background := Rectangle {
+		border-radius: 4px;
+		background: #FFFFFFB3;
+		border-width: 1px;
+		border-color: @linear-gradient(180deg, #0000000F 99.99%, #00000073 100%, #00000073 100%);
+
+		layout := HorizontalLayout {
+			padding-left: 8px;
+			padding-right: 2px;
+			padding-top: 2px;
+			padding-bottom: 2px;
+			spacing: 2px;
+
+			Rectangle {
+				clip: true;
+				horizontal-stretch: 1;
+
+				base := SpinBoxBase {
+					width: 100%;
+					// サイドバー用に文字を 11px にして縦を詰める。
+					font-size: 1rem;
+					color: #000000E6;
+					selection-background-color: #0078D4;
+					selection-foreground-color: #FFFFFF;
+				}
+			}
+
+			SpinBoxButton {
+				visible: root.enabled && !root.read-only;
+				icon: @image-url("_chevron-up.svg");
+
+				clicked => {
+					base.increment();
+				}
+			}
+
+			SpinBoxButton {
+				visible: root.enabled && !root.read-only;
+				icon: @image-url("_chevron-down.svg");
+
+				clicked => {
+					base.decrement();
+				}
+			}
+		}
+
+		focus-border := Rectangle {
+			x: parent.border-radius;
+			y: parent.height - self.height;
+			width: parent.width - 2 * parent.border-radius;
+			height: 2px;
+		}
+
+		if root.tooltip-text != "" : Tooltip {
+			AppTooltip {
+				text: root.tooltip-text;
+			}
+		}
+	}
+}
+
