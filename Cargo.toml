@@ -1,6 +1,6 @@
 [package]
 name = "ergon-slint-controls"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 links = "ergon-slint-controls"
 
@@ -11,7 +11,6 @@ path = "src/lib.rs"
 # アプリと同じ slint インスタンスが使われる (Cargo の feature 統合)。
 # 生成コードが参照する型・backend を揃えるため、アプリ側と同じ features を指定する。
 slint = { version = "1.17", features = ["std", "backend-winit", "renderer-femtovg", "compat-1-2", "unstable-winit-030"] }
-png = "0.18"
 
 [target.'cfg(windows)'.dependencies]
 # dialogs::prompt_folder の IFileOpenDialog は windows クレートの
