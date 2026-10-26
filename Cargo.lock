@@ -1120,7 +1120,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "ergon-slint-controls"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gtk",
  "slint",
@@ -2890,6 +2890,16 @@ checksum = "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
 dependencies = [
  "adler2",
  "simd-adler32",
+]
+
+[[package]]
+name = "modal-window"
+version = "0.1.0"
+dependencies = [
+ "ergon-slint-controls",
+ "i-slint-backend-winit",
+ "slint",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

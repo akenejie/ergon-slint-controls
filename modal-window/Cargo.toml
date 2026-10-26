@@ -1,0 +1,42 @@
+[package]
+name = "modal-window"
+version = "0.1.0"
+edition = "2021"
+description = "モーダル ダイアログ制御ライブラリ (子ウィンドウ / ウィンドウ内オーバーレイの 2 方式を 1 つの定数で切り替える)"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+# 全 OS でウィンドウ内オーバーレイに強制する。アプリ側から見た「モーダル方式の
+# フラグ」はこの feature (または force-child-window) を選ぶだけで切り替わる。
+force-in-window-overlay = []
+# 全 OS で子ウィンドウ (別 OS ウィンドウ) に強制する。
+force-child-window = []
+# vendored winit パッチ由来の API (WindowAttributes::with_dialog_modal_frame /
+# Window::set_transient_for / set_modal) を使うビルドで有効にする。このパッチを
+# 当てた winit を使うアプリだけ有効にすること。無効でも子ウィンドウ モードは
+# 動くが、X11 ではモーダル ヒント (transient / modal) が付かず、Windows では
+# 生成時からのダイアログ枠 (WS_EX_DLGMODALFRAME) が付かない。
+winit-modal-hints = []
+
+[dependencies]
+# Slint 本体。アプリ側と同じバージョン / 機能 (winit バックエンド + 生 winit
+# ウィンドウへのアクセス) を要求する。
+slint = { version = "1.17", features = ["std", "backend-winit", "renderer-femtovg", "compat-1-2", "unstable-winit-030"] }
+# 子ダイアログ生成時の OS 属性フック (window_attributes_hook) を仕込むための
+# winit バックエンド。アプリ側と同じバージョン / 機能。
+i-slint-backend-winit = { version = "1.17.1", features = ["renderer-femtovg"] }
+# WM がモーダル ヒントを無視する環境 (X11 等) での親ウィンドウ入力遮断
+# (dialog_push / dialog_pop) と HWND 取得 (main_window_hwnd) を借りる。
+# 同一リポジトリ内のパッケージなので path で参照する。git 依存として本クレート
+# を参照した場合も、この path は同じ git チェックアウト内へ解決される。
+ergon-slint-controls = { path = ".." }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# 子ダイアログのタイトルバー整え (FixedDialog 相当) / 所有者設定 / 親の無効化。
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
