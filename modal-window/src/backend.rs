@@ -23,7 +23,7 @@ static OWNER_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsi
 ///
 /// オーバーレイ モードでは子ウィンドウを生成しないため何もしない。
 pub fn mark_next_window_as_child_dialog() {
-	if MODAL_MODE.is_child_window() {
+	if !MODAL_MODE.is_child_window() {
 		return;
 	}
 	#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
@@ -35,7 +35,7 @@ pub fn mark_next_window_as_child_dialog() {
 /// 所有者なしのウィンドウになる (タスクバーに別枠で出るなど)。
 #[cfg(windows)]
 pub fn note_owner_hwnd(hwnd: isize) {
-	if MODAL_MODE.is_child_window() {
+	if !MODAL_MODE.is_child_window() {
 		return;
 	}
 	OWNER_HWND.store(hwnd, std::sync::atomic::Ordering::Relaxed);
@@ -47,7 +47,7 @@ pub fn note_owner_hwnd(hwnd: isize) {
 /// オーバーレイ モードでは子ウィンドウを生成しないため、フックも不要。
 /// 何もせず既定の (winit) バックエンドに任せる。
 pub fn prepare_backend() -> Result<(), slint::PlatformError> {
-	if MODAL_MODE.is_child_window() {
+	if !MODAL_MODE.is_child_window() {
 		return Ok(());
 	}
 	// Windows: 子ダイアログを生成時点からダイアログ枠 (WS_EX_DLGMODALFRAME) +
