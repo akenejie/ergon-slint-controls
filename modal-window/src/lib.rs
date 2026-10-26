@@ -46,17 +46,19 @@
 //! バーのアイコンを消せないため、生成時点からこのスタイルで作る必要がある。
 //! 本クレートは [`backend::prepare_backend`] の生成フックでこれを適用するが、
 //! 上流 winit に無い API (`WindowAttributes::with_dialog_modal_frame`) を
-//! 使うため、同梱の winit パッチ (このリポジトリの `patches/winit`) を
-//! アプリの `[patch.crates-io]` で当て、feature `winit-modal-hints` を
-//! 有効にする:
+//! 使うため、winit パッチ フォーク
+//! (https://github.com/akenejie/slint-modal-winit) をアプリの
+//! `[patch.crates-io]` で当て、feature `winit-modal-hints` を有効にする:
 //!
 //! ```toml
 //! [patch.crates-io]
-//! winit = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.3.1" }
+//! winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.1" }
 //! ```
 //!
-//! パッチを使わないビルドも通る (feature を外す) が、その場合 Windows の
-//! 子ダイアログは生成時からのダイアログ枠を持たない。
+//! パッチは upstream winit v0.30.13 を基準にしたコミット列なので、差分は
+//! `git diff v0.30.13..main` で見え、上流追従は merge で行える。パッチを
+//! 使わないビルドも通る (feature を外す) が、その場合 Windows の子ダイアログ
+//! は生成時からのダイアログ枠を持たない。
 //!
 //! # 起動時の準備 (子ウィンドウ モードのみ意味を持つ)
 //!
