@@ -12,11 +12,16 @@ default = []
 force-in-window-overlay = []
 # 全 OS で子ウィンドウ (別 OS ウィンドウ) に強制する。
 force-child-window = []
-# vendored winit パッチ由来の API (WindowAttributes::with_dialog_modal_frame /
-# Window::set_transient_for / set_modal) を使うビルドで有効にする。このパッチを
-# 当てた winit を使うアプリだけ有効にすること。無効でも子ウィンドウ モードは
-# 動くが、X11 ではモーダル ヒント (transient / modal) が付かず、Windows では
-# 生成時からのダイアログ枠 (WS_EX_DLGMODALFRAME) が付かない。
+# vendored winit パッチ (このリポジトリの patches/winit) 由来の API
+# (WindowAttributes::with_dialog_modal_frame / Window::set_transient_for /
+# set_modal) を使うビルドで有効にする。パッチの当て方:
+#
+#   [patch.crates-io]
+#   winit = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.3.1" }
+#
+# 無効でも子ウィンドウ モードは動くが、X11 ではモーダル ヒント (transient /
+# modal) が付かず、Windows では生成時からのダイアログ枠 (WS_EX_DLGMODALFRAME、
+# タイトルバー アイコン無し) が付かない。
 winit-modal-hints = []
 
 [dependencies]

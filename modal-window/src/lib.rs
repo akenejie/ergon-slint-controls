@@ -39,6 +39,25 @@
 //! [`MODAL_MODE`] は `const` なので、選ばれなかった側の実装は release ビルド
 //! (LTO) で dead-code elimination により除去される。
 //!
+//! # 子ダイアログのスタイル (アイコン無しのダイアログ枠)
+//!
+//! モーダル子ダイアログの慣習的なスタイルは「アイコン無しのダイアログ枠」
+//! (Windows: `WS_EX_DLGMODALFRAME`)。Windows はウィンドウ生成後にタイトル
+//! バーのアイコンを消せないため、生成時点からこのスタイルで作る必要がある。
+//! 本クレートは [`backend::prepare_backend`] の生成フックでこれを適用するが、
+//! 上流 winit に無い API (`WindowAttributes::with_dialog_modal_frame`) を
+//! 使うため、同梱の winit パッチ (このリポジトリの `patches/winit`) を
+//! アプリの `[patch.crates-io]` で当て、feature `winit-modal-hints` を
+//! 有効にする:
+//!
+//! ```toml
+//! [patch.crates-io]
+//! winit = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.3.1" }
+//! ```
+//!
+//! パッチを使わないビルドも通る (feature を外す) が、その場合 Windows の
+//! 子ダイアログは生成時からのダイアログ枠を持たない。
+//!
 //! # 起動時の準備 (子ウィンドウ モードのみ意味を持つ)
 //!
 //! [`backend::prepare_backend`] を `main` 冒頭で呼ぶと、以降
