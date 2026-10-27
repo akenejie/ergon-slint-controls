@@ -151,13 +151,6 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 			}
 		}
 	});
-	// タイトルバーのテーマを親に揃える。slint バックエンドは生成直後にホスト
-	// のカラースキームを新規ウィンドウへ流し込むため、生成時属性では上書き
-	// されてしまう。生成後の set_theme は OS 標準機構 (位置移動のような
-	// ルール逸脱ではない)。
-	if let Some(theme) = backend::take_next_child_theme() {
-		child.with_winit_window(|cw| cw.set_theme(Some(theme)));
-	}
 	// 位置は座標指定せずウィンドウ マネージャに任せる。transient_for 付きの
 	// ウィンドウを親基準に配置するのは Linux の流儀 (多くのディストリビューション
 	// の WM が自動で親の中央/近傍に置く)。生成後の座標指定移動は、WM が決めた
@@ -290,12 +283,25 @@ fn install_event_hook(slot: &ModalSlot) {
 	let guard = slot.borrow();
 	let Some(session) = guard.as_ref() else { return };
 	let window = session.child.window();
+	// (X11/macOS) slint バックエンドは生成直後にホストのカラースキームを新規
+	// ウィンドウへ流し込む (winitwindowadapter の create_window)。テーマは
+	// winit イベント経由で付け直す — ウィンドウの最初のイベントは生成と echo
+	// の完了後必ず発火するため、確実に最後の set_theme になる。
+	let child_theme_pending = std::cell::Cell::new(true);
 	window.on_winit_window_event(move |_win, event| {
 		use slint::winit_030::EventResult;
 		use slint::winit_030::winit::event::WindowEvent;
 		let Some(slot) = weak.upgrade() else { return EventResult::Propagate };
 		let child = slot.borrow().as_ref().map(|s| s.child.clone());
 		let Some(child) = child else { return EventResult::Propagate };
+		if child_theme_pending.take() {
+			// (Windows は生成時属性で適用済みなので取るものが無い)
+			#[cfg(not(windows))]
+			if let Some(theme) = backend::take_next_child_theme() {
+				let cw = child.window();
+				cw.with_winit_window(|w| w.set_theme(Some(theme)));
+			}
+		}
 		// (Windows) WS_EX_DLGMODALFRAME は winit パッチが生成時から維持する。
 		// 残る所望スタイル (閉じるボタンのみ・非リサイズ) は winit が
 		// set_window_flags のたびに再計算するため、イベントごとに冪等に
