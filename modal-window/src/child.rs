@@ -284,20 +284,23 @@ fn install_event_hook(slot: &ModalSlot) {
 	let Some(session) = guard.as_ref() else { return };
 	let window = session.child.window();
 	// (X11/macOS) slint バックエンドは生成直後にホストのカラースキームを新規
-	// ウィンドウへ流し込む (winitwindowadapter の create_window)。テーマは
-	// winit イベント経由で付け直す — ウィンドウの最初のイベントは生成と echo
-	// の完了後必ず発火するため、確実に最後の set_theme になる。
-	let child_theme_pending = std::cell::Cell::new(true);
+	// ウィンドウへ流し込み (winitwindowadapter の create_window)、さらに XDG
+	// 設定のポータル監視が全ウィンドウへ push する。テーマは生成後しばらく
+	// イベントごとに再主張して勝たせる。テーマ指定はプロパティ書き換えのみで
+	// ウィンドウ移動のような可視ちらつきはなく、落ち着いた後は OS 標準機構に
+	// 任せる。
+	let theme_until = std::cell::Cell::new(
+		std::time::Instant::now() + std::time::Duration::from_millis(300),
+	);
 	window.on_winit_window_event(move |_win, event| {
 		use slint::winit_030::EventResult;
 		use slint::winit_030::winit::event::WindowEvent;
 		let Some(slot) = weak.upgrade() else { return EventResult::Propagate };
 		let child = slot.borrow().as_ref().map(|s| s.child.clone());
 		let Some(child) = child else { return EventResult::Propagate };
-		if child_theme_pending.take() {
-			// (Windows は生成時属性で適用済みなので取るものが無い)
-			#[cfg(not(windows))]
-			if let Some(theme) = backend::take_next_child_theme() {
+		#[cfg(not(windows))]
+		if std::time::Instant::now() < theme_until.get() {
+			if let Some(theme) = backend::peek_next_child_theme() {
 				let cw = child.window();
 				cw.with_winit_window(|w| w.set_theme(Some(theme)));
 			}

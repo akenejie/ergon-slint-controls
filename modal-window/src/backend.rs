@@ -36,11 +36,12 @@ pub(crate) fn set_next_child_theme(theme: Option<slint::winit_030::winit::window
 	NEXT_CHILD_THEME.store(v, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// 予約済みテーマを取り出す (X11/macOS: 生成後に child.rs が set_theme する)。
+/// 予約済みテーマを参照する (消費しない。X11/macOS では child.rs が slint
+/// バックエンドのカラースキーム push に勝つまで短時間再主張する)。
 #[cfg(not(windows))]
-pub(crate) fn take_next_child_theme() -> Option<slint::winit_030::winit::window::Theme> {
+pub(crate) fn peek_next_child_theme() -> Option<slint::winit_030::winit::window::Theme> {
 	use slint::winit_030::winit::window::Theme;
-	match NEXT_CHILD_THEME.swap(0, std::sync::atomic::Ordering::Relaxed) {
+	match NEXT_CHILD_THEME.load(std::sync::atomic::Ordering::Relaxed) {
 		1 => Some(Theme::Light),
 		2 => Some(Theme::Dark),
 		_ => None,
