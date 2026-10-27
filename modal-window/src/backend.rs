@@ -16,8 +16,9 @@ static NEXT_WINDOW_IS_CHILD_DIALOG: std::sync::atomic::AtomicBool =
 	std::sync::atomic::AtomicBool::new(false);
 // 次に生成する子ダイアログのタイトルバー テーマ (0 = 継承しない / 1 = Light /
 // 2 = Dark)。既定では open_child_modal が親ウィンドウの現在テーマを引き継ぐ
-// (ダイアログのテーマは親に揃えるのが OS の慣習)。
-#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
+// (ダイアログのテーマは親に揃えるのが OS の慣習)。Windows は生成フックで
+// 属性に焼く (X11/macOS は slint バックエンドが生成直後にホストのカラースキーム
+// を流し込むため生成後の set_theme で付け直す — child.rs 参照)。
 static NEXT_CHILD_THEME: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 // (Windows) 子ダイアログの所有者となるメインウィンドウの HWND。
 #[cfg(windows)]
@@ -25,7 +26,6 @@ static OWNER_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsi
 
 /// 次に生成する子ダイアログのタイトルバー テーマを指定する。
 /// `None` で継承をやめ、OS 既定に任せる。
-#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
 pub(crate) fn set_next_child_theme(theme: Option<slint::winit_030::winit::window::Theme>) {
 	use slint::winit_030::winit::window::Theme;
 	let v = match theme {
@@ -36,9 +36,20 @@ pub(crate) fn set_next_child_theme(theme: Option<slint::winit_030::winit::window
 	NEXT_CHILD_THEME.store(v, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// フック共通: 子ダイアログ属性へテーマを焼く。子ダイアログ以外の生成では
-/// フラグをクリアして既定に任せる。
-#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
+/// 予約済みテーマを取り出す (X11/macOS: 生成後に child.rs が set_theme する)。
+#[cfg(not(windows))]
+pub(crate) fn take_next_child_theme() -> Option<slint::winit_030::winit::window::Theme> {
+	use slint::winit_030::winit::window::Theme;
+	match NEXT_CHILD_THEME.swap(0, std::sync::atomic::Ordering::Relaxed) {
+		1 => Some(Theme::Light),
+		2 => Some(Theme::Dark),
+		_ => None,
+	}
+}
+
+/// フック共通 (Windows): 子ダイアログ属性へテーマを焼く。子ダイアログ以外の
+/// 生成ではフラグをクリアして既定に任せる。
+#[cfg(windows)]
 fn apply_next_child_theme(
 	child_dialog: bool,
 	attrs: slint::winit_030::winit::window::WindowAttributes,
@@ -141,7 +152,9 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 	// ダイアログ型はウィンドウ マネージャが「タイトルバーのメニュー無し・
 	// タスクバーに出さない」等の扱いをする。transient / modal は生成後に
 	// child モジュールが付ける。位置は座標指定せず WM の配置 (transient なら
-	// 親基準) に任せる。
+	// 親基準) に任せる。テーマは生成後に child.rs が set_theme する (slint
+	// バックエンドが生成直後にホストのカラースキームを流し込むため、生成時
+	// 属性では上書きされてしまう)。
 	#[cfg(all(unix, not(target_os = "macos")))]
 	{
 		use slint::winit_030::winit::platform::x11::{WindowAttributesExtX11, WindowType};
@@ -149,12 +162,12 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 			.with_window_attributes_hook(|attrs| {
 				let child =
 					NEXT_WINDOW_IS_CHILD_DIALOG.swap(false, std::sync::atomic::Ordering::Relaxed);
-				let attrs = if !child {
+				if !child {
+					NEXT_CHILD_THEME.store(0, std::sync::atomic::Ordering::Relaxed);
 					attrs
 				} else {
 					attrs.with_x11_window_type(vec![WindowType::Dialog])
-				};
-				apply_next_child_theme(child, attrs)
+				}
 			})
 			.build()?;
 		slint::platform::set_platform(Box::new(backend))

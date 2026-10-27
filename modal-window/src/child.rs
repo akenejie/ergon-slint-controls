@@ -151,6 +151,13 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 			}
 		}
 	});
+	// タイトルバーのテーマを親に揃える。slint バックエンドは生成直後にホスト
+	// のカラースキームを新規ウィンドウへ流し込むため、生成時属性では上書き
+	// されてしまう。生成後の set_theme は OS 標準機構 (位置移動のような
+	// ルール逸脱ではない)。
+	if let Some(theme) = backend::take_next_child_theme() {
+		child.with_winit_window(|cw| cw.set_theme(Some(theme)));
+	}
 	// 位置は座標指定せずウィンドウ マネージャに任せる。transient_for 付きの
 	// ウィンドウを親基準に配置するのは Linux の流儀 (多くのディストリビューション
 	// の WM が自動で親の中央/近傍に置く)。生成後の座標指定移動は、WM が決めた
@@ -375,33 +382,8 @@ fn apply_modal_when_ready<P: ComponentHandle + 'static>(
 		let Some(session) = guard.as_ref() else { return };
 		present_modal_dialog(parent.window(), session.child.window());
 	}
-	// ウィンドウ マネージャが表示後に初期配置を上書きする環境 (WSLg など)
-	// 向けに、表示直後の数百 ms だけ中央配置を再試行する。
-	#[cfg(not(windows))]
-	retry_center_modal(parent_weak, slot_weak, 0);
-}
-
-// ウィンドウ マネージャは表示後およそ 50ms で初期配置を確定させる。それに
-// 合わせて数回だけ中央配置を再要求する (回数を増やすとちらつく)。
-#[cfg(not(windows))]
-fn retry_center_modal<P: ComponentHandle + 'static>(
-	parent_weak: &slint::Weak<P>,
-	slot_weak: &WeakModalSlot,
-	tries: u32,
-) {
-	const RETRIES: u32 = 3;
-	if tries >= RETRIES {
-		return;
-	}
-	let parent_weak = parent_weak.clone();
-	let slot_weak = slot_weak.clone();
-	slint::Timer::single_shot(std::time::Duration::from_millis(30), move || {
-		let Some(parent) = parent_weak.upgrade() else { return };
-		let Some(slot) = slot_weak.upgrade() else { return };
-		let guard = slot.borrow();
-		let Some(session) = guard.as_ref() else { return };
-		center_modal_dialog(parent.window(), session.child.window());
-		drop(guard);
-		retry_center_modal(&parent_weak, &slot_weak, tries + 1);
-	});
+	// 位置は OS に任せる (Windows: 生成時 CenterParent / Linux: WM の transient
+	// 配置)。表示後の再配置は WM の決定を上書きする OS のルール逸脱であり、
+	// Ubuntu 実機では「中央配置 → 座標移動」のちらつきとして観測されたため
+	// 行わない。
 }
