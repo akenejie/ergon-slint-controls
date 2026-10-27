@@ -3,7 +3,17 @@
 //! アプリは「ダイアログの中身」と「開く/閉じる指示」だけを書き、OS 間の差分
 //! (子ウィンドウの生成属性・タイトルバー整え・テーマの親への追従・Esc/Enter
 //! の読み替え・親ウィンドウの入力遮断・破棄) はこのクレートが担う。配置は
-//! OS に任せる (Windows: 生成時 CenterParent / Linux: WM の transient 配置)。
+//! OS 間で「位置の決定責任」が異なる点にも注意:
+//!
+//! - **Linux**: WM が transient ウィンドウを親基準に配置する文化があるため、
+//!   ライブラリは座標を扱わない (`WM_TRANSIENT_FOR` を伝えるだけ)
+//! - **Windows**: OS はダイアログの位置を決めない (既定はカスケード等)。
+//!   したがって位置を決める必要があるが、生成時にはまだサイズが確定しない
+//!   (slint は表示直前にリサイズする)。そこで winit パッチ フォークの
+//!   `with_dialog_center_over_owner` を指示し、**フォークが表示直前
+//!   (`ShowWindow` の直前) に所有者の中央へ配置**する。実矩形で計算するため
+//!   最初のフレームから正位置で、生成後の移動によるちらつきはない
+//! - macOS: 未検証 (OS のカスケード配置に従う)
 //!
 //! # 設計思想
 //!
@@ -63,7 +73,7 @@
 //!
 //! ```toml
 //! [patch.crates-io]
-//! winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.2" }
+//! winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.3" }
 //! ```
 //!
 //! 本リポジトリ (ergon-slint-controls) のワークスペースも同じパッチを持ち、
@@ -89,7 +99,7 @@ compile_error!(
 	アイコン無しのダイアログ枠にするため。Windows は生成後のアイコン除去が不可能)。\
 	アプリの Cargo.toml に次を追加してください:\n\
 	[patch.crates-io]\n\
-	winit = { git = \"https://github.com/akenejie/slint-modal-winit\", tag = \"v0.30.13-modal.2\" }\n\
+	winit = { git = \"https://github.com/akenejie/slint-modal-winit\", tag = \"v0.30.13-modal.3\" }\n\
 	(feature winit-modal-hints は既定で有効です)"
 );
 
