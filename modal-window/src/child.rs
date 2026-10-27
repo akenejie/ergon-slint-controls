@@ -94,8 +94,10 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		SetWindowLongPtrW(child_hwnd, GWLP_HWNDPARENT, parent_hwnd as isize);
 	}
 	enforce_modal_styles(child);
-	// 位置 (CenterParent) は生成属性として backend フックが適用済み。
-	// 生成後の SetWindowPos 移動はちらつくため行わない。
+	// 位置 (所有者の中央) は winit パッチ フォークが「表示直前 (ShowWindow の
+	// 直前)」に配置する — ライブラリは backend フックで
+	// with_dialog_center_over_owner を指示するだけ。表示後の SetWindowPos 移動
+	// はちらつくため行わない。
 	// モーダル: 親ウィンドウを無効化して操作できないようにする。
 	unsafe {
 		EnableWindow(parent_hwnd, 0);
@@ -184,11 +186,12 @@ pub type WeakModalSlot = std::rc::Weak<RefCell<Option<ModalSession>>>;
 
 /// 子ダイアログを表示し、モーダル子ウィンドウとして整える。
 ///
-/// 位置は OS に任せる: Windows は生成時 CenterParent (backend フック)、
-/// Linux は WM の transient 配置 (多くのディストリビューションが親基準で
-/// 配置する)。生成後の座標移動は OS のルール逸脱 (ちらつき) なので行わない。
-/// タイトルバーのテーマは既定で親ウィンドウに揃える。閉じるときは必ず
-/// [`close_child_modal`] を使う (hide ではなく破棄される)。
+/// 位置の決定責任は OS の文化による: Windows は OS が位置を決めないため
+/// winit パッチ フォークが「表示直前」に所有者の中央へ配置し (ライブラリは
+/// 生成時属性で指示)、Linux は WM が transient を親基準に配置する文化なので
+/// ライブラリは座標を扱わない。いずれも表示後の座標移動は行わない
+/// (ちらつきの原因)。タイトルバーのテーマは既定で親ウィンドウに揃える。
+/// 閉じるときは必ず [`close_child_modal`] を使う (hide ではなく破棄される)。
 pub fn open_child_modal<P: ComponentHandle + 'static, C: ModalChild>(
 	slot: &ModalSlot,
 	parent: &P,
@@ -391,8 +394,8 @@ fn apply_modal_when_ready<P: ComponentHandle + 'static>(
 		let Some(session) = guard.as_ref() else { return };
 		present_modal_dialog(parent.window(), session.child.window());
 	}
-	// 位置は OS に任せる (Windows: 生成時 CenterParent / Linux: WM の transient
-	// 配置)。表示後の再配置は WM の決定を上書きする OS のルール逸脱であり、
-	// Ubuntu 実機では「中央配置 → 座標移動」のちらつきとして観測されたため
-	// 行わない。
+	// 位置の決定は Windows ではライブラリの責任 (生成時 with_position、
+	// backend.rs)、Linux では WM の責任 (transient 配置)。表示後の再配置は
+	// いずれの OS でもちらつきの原因になるため行わない (Ubuntu 実機では
+	// 「WM 中央配置 → 座標移動」のちらつきとして観測された)。
 }

@@ -1,6 +1,6 @@
 [package]
 name = "ergon-slint-controls"
-version = "0.3.11"
+version = "0.3.12"
 edition = "2021"
 links = "ergon-slint-controls"
 
@@ -51,4 +51,4 @@ members = ["modal-window"]
 # Cargo の仕様上 [patch] はビルドのルートにしか書けないため、本ワークスペース
 # 自身のビルド/テスト用にここにも置く (利用アプリも同じ 1 行を置く必要がある)。
 [patch.crates-io]
-winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.2" }
+winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.3" }

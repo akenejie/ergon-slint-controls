@@ -116,12 +116,16 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 		return Ok(());
 	}
 	// Windows: 子ダイアログを生成時点からダイアログ枠 (WS_EX_DLGMODALFRAME) +
-	// 所有ウィンドウ + CenterParent の位置 + 親のテーマで作る。生成後の移動や
-	// スタイル修正はちらつきの原因になる (Ubuntu 実機で WM 中央配置との二度
-	// 手間がちらつきとして観測された教訓)。winit パッチ フォークの
-	// with_dialog_modal_frame / (上流の) with_owner_window が WindowFlags と
-	// して保持するため、winit のスタイル再計算でも外れない。メインウィンドウ
-	// 自体には何もしない。
+	// 所有ウィンドウ付きで作り、タイトルバーのテーマも親に揃える。
+	//
+	// 位置: Windows は OS がダイアログの位置を決めないためライブラリの責任だが、
+	// 生成時にはまだサイズが確定しない (slint は表示直前にリサイズする)。そこで
+	// winit パッチ フォークの with_dialog_center_over_owner を指示し、フォークが
+	// 表示直前 (ShowWindow の直前、実矩形が出揃った時点) に所有者の中央へ配置
+	// する。最初のフレームから正位置で、表示後の移動によるちらつきはない。
+	// 枠もフォークの with_dialog_modal_frame / (上流の) with_owner_window が
+	// WindowFlags として保持するため、winit のスタイル再計算でも外れない。
+	// メインウィンドウ自体には何もしない。
 	#[cfg(windows)]
 	{
 		use slint::winit_030::winit::platform::windows::WindowAttributesExtWindows;
@@ -132,8 +136,9 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 				if !child {
 					return apply_next_child_theme(false, attrs);
 				}
-				// ダイアログ枠 (WS_EX_DLGMODALFRAME) は winit パッチ フォーク
-				// 由来の API (フォーク無しのビルドは compile_error で排除済み)。
+				// ダイアログ枠と位置 (表示直前の所有者中央配置) は winit パッチ
+				// フォーク由来の API (フォーク無しのビルドは compile_error で
+				// 排除済み)。
 				#[cfg(feature = "winit-modal-hints")]
 				let attrs = attrs.with_dialog_modal_frame(true);
 				let owner = OWNER_HWND.load(std::sync::atomic::Ordering::Relaxed);
@@ -142,7 +147,8 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 				} else {
 					attrs.with_owner_window(owner as _)
 				};
-				let attrs = center_over_owner(attrs, owner);
+				#[cfg(feature = "winit-modal-hints")]
+				let attrs = attrs.with_dialog_center_over_owner(true);
 				apply_next_child_theme(true, attrs)
 			})
 			.build()?;
@@ -180,37 +186,4 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 		let _ = 0;
 	}
 	Ok(())
-}
-
-/// (Windows) 子ダイアログを所有ウィンドウ (親) の中央に置く。Windows の
-/// `StartPosition.CenterParent` 相当。生成後の SetWindowPos 移動は一度
-/// 別位置で描画された後に動くためちらつくが、生成属性 (`with_position`) なら
-/// 最初の描画から正しい位置になる。
-#[cfg(windows)]
-fn center_over_owner(
-	mut attrs: slint::winit_030::winit::window::WindowAttributes,
-	owner: isize,
-) -> slint::winit_030::winit::window::WindowAttributes {
-	use slint::winit_030::winit::dpi::{PhysicalPosition, Position};
-	use windows_sys::Win32::Foundation::RECT;
-	use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
-	use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect;
-	let Some(size) = attrs.inner_size else {
-		return attrs;
-	};
-	if owner == 0 {
-		return attrs;
-	}
-	let mut pr = RECT::default();
-	unsafe {
-		if GetWindowRect(owner as _, &mut pr) == 0 {
-			return attrs;
-		}
-	}
-	// 親の DPI を基準にスケール変換する (子は親と同じモニタに出る想定)。
-	let scale = unsafe { GetDpiForWindow(owner as _) } as f64 / 96.0;
-	let cs: slint::winit_030::winit::dpi::PhysicalSize<u32> = size.to_physical(scale);
-	let x = pr.left + ((pr.right - pr.left) - cs.width as i32) / 2;
-	let y = pr.top + ((pr.bottom - pr.top) - cs.height as i32) / 2;
-	attrs.with_position(Position::Physical(PhysicalPosition::new(x, y)))
 }
