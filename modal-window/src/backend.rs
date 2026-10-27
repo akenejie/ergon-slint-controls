@@ -41,6 +41,22 @@ pub fn note_owner_hwnd(hwnd: isize) {
 	OWNER_HWND.store(hwnd, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// (Windows) 子ダイアログの所有者を Slint ウィンドウから直接登録する。
+///
+/// アプリ側で HWND を取り回さずに済むよう、プラットフォーム固有の取得も
+/// 本クレート内で行う。メインウィンドウ生成後に 1 度呼ぶ。
+#[cfg(windows)]
+pub fn note_owner_window(window: &slint::Window) {
+	if !MODAL_MODE.is_child_window() {
+		return;
+	}
+	let hwnd = ergon_slint_controls::platform::main_window_hwnd(window);
+	if hwnd.is_null() {
+		return;
+	}
+	OWNER_HWND.store(hwnd as isize, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// winit バックエンドを明示構築し、子ダイアログ生成フックを仕込む。
 /// `main` の冒頭 (最初のウィンドウ生成前) に呼ぶ。
 ///

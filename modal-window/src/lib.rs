@@ -42,23 +42,31 @@
 //! # 子ダイアログのスタイル (アイコン無しのダイアログ枠)
 //!
 //! モーダル子ダイアログの慣習的なスタイルは「アイコン無しのダイアログ枠」
-//! (Windows: `WS_EX_DLGMODALFRAME`)。Windows はウィンドウ生成後にタイトル
-//! バーのアイコンを消せないため、生成時点からこのスタイルで作る必要がある。
-//! 本クレートは [`backend::prepare_backend`] の生成フックでこれを適用するが、
-//! 上流 winit に無い API (`WindowAttributes::with_dialog_modal_frame`) を
-//! 使うため、winit パッチ フォーク
-//! (https://github.com/akenejie/slint-modal-winit) をアプリの
-//! `[patch.crates-io]` で当て、feature `winit-modal-hints` を有効にする:
+//! (Windows: `WS_EX_DLGMODALFRAME`)。本クレートは
+//! [`backend::prepare_backend`] の生成フックと、生成後の
+//! [`child::enforce_modal_styles`] (Win32 で冪等に整える) の 2 段構えで
+//! 適用するため、**fork 無しでも子ダイアログ モードは動く**。
+//!
+//! 追加で次の 2 点を求める場合だけ、任意の winit パッチ フォーク
+//! (https://github.com/akenejie/slint-modal-winit) を feature
+//! `winit-modal-hints` と併せて有効にする:
+//!
+//! - 生成時点から `WS_EX_DLGMODALFRAME` を与え、初回描画のちらつきを消す
+//! - X11 で `WM_TRANSIENT_FOR` / `_NET_WM_STATE_MODAL` を付ける
+//!   (無効時は `_NET_WM_WINDOW_TYPE_DIALOG` + 親入力の遮断で代替する)
+//!
+//! Cargo の `[patch.crates-io]` は**ビルドのルート (アプリ) の manifest で
+//! しか有効にならず、ライブラリから消費側へ伝播しない**。したがってこの
+//! feature を使うアプリが、自分の Cargo.toml に次の 1 行を置く:
 //!
 //! ```toml
 //! [patch.crates-io]
 //! winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.1" }
 //! ```
 //!
-//! パッチは upstream winit v0.30.13 を基準にしたコミット列なので、差分は
-//! `git diff v0.30.13..main` で見え、上流追従は merge で行える。パッチを
-//! 使わないビルドも通る (feature を外す) が、その場合 Windows の子ダイアログ
-//! は生成時からのダイアログ枠を持たない。
+//! 本クレート自身は fork を参照しない (既定ビルドは crates.io の winit で
+//! 完結する)。フォークは upstream winit v0.30.13 を基準にしたコミット列なので、
+//! 差分は `git diff v0.30.13..main` で見え、上流追従は merge で行える。
 //!
 //! # 起動時の準備 (子ウィンドウ モードのみ意味を持つ)
 //!
@@ -74,7 +82,7 @@ pub mod child;
 
 pub use backend::{mark_next_window_as_child_dialog, prepare_backend};
 #[cfg(windows)]
-pub use backend::note_owner_hwnd;
+pub use backend::{note_owner_hwnd, note_owner_window};
 pub use child::{
 	center_modal_dialog, close_child_modal, dismiss_modal_dialog, enforce_modal_styles,
 	open_child_modal, ModalSession, ModalSlot, WeakModalSlot,

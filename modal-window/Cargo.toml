@@ -14,14 +14,17 @@ force-in-window-overlay = []
 force-child-window = []
 # winit パッチ フォーク (https://github.com/akenejie/slint-modal-winit) 由来の
 # API (WindowAttributes::with_dialog_modal_frame / Window::set_transient_for /
-# set_modal) を使うビルドで有効にする。パッチの当て方:
+# set_modal) を使うビルドで有効にする。本クレートは既定で fork を参照しない。
+# Cargo の [patch.crates-io] はビルドのルート (アプリ) の manifest でしか
+# 有効にならないため、使うアプリ側で次を置く:
 #
 #   [patch.crates-io]
 #   winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.1" }
 #
-# 無効でも子ウィンドウ モードは動くが、X11 ではモーダル ヒント (transient /
-# modal) が付かず、Windows では生成時からのダイアログ枠 (WS_EX_DLGMODALFRAME、
-# タイトルバー アイコン無し) が付かない。
+# 無効でも子ウィンドウ モードは動く (Windows は生成後に Win32 で
+# WS_EX_DLGMODALFRAME を冪等適用、X11 は _NET_WM_WINDOW_TYPE_DIALOG +
+# 親入力の遮断で代替)。有効にすると生成時からのダイアログ枠 (ちらつき無し) と
+# X11 の transient / modal ヒントが付く。
 winit-modal-hints = []
 
 [dependencies]
