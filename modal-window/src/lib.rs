@@ -1,8 +1,9 @@
 //! モーダル ダイアログ制御ライブラリ。
 //!
 //! アプリは「ダイアログの中身」と「開く/閉じる指示」だけを書き、OS 間の差分
-//! (子ウィンドウの生成属性・タイトルバー整え・中央配置・Esc/Enter の読み替え・
-//! 親ウィンドウの入力遮断・破棄) はこのクレートが担う。
+//! (子ウィンドウの生成属性・タイトルバー整え・テーマの親への追従・Esc/Enter
+//! の読み替え・親ウィンドウの入力遮断・破棄) はこのクレートが担う。配置は
+//! OS に任せる (Windows: 生成時 CenterParent / Linux: WM の transient 配置)。
 //!
 //! # 設計思想
 //!
@@ -102,8 +103,6 @@ pub use child::{
 	close_child_modal, dismiss_modal_dialog, enforce_modal_styles,
 	open_child_modal, ModalSession, ModalSlot, WeakModalSlot,
 };
-#[cfg(not(windows))]
-pub use child::center_modal_dialog;
 
 // --- 表示方式 (feature 1 箇所で OS 毎の挙動が変わる) ---
 
@@ -173,10 +172,10 @@ pub const MODAL_MODE: ModalMode = if cfg!(feature = "force-in-window-overlay") {
 /// 子ウィンドウ (別 OS ウィンドウ) モーダルのダイアログ側抽象。
 ///
 /// アプリは任意の Slint トップレベル コンポーネントをこのトレイトで包み、
-/// [`child::open_child_modal`] へ渡す。ウィンドウの表示・モーダル化・中央配置・
-/// Esc/Enter/閉じるボタンの読み替え・破棄はライブラリが行い、OK / キャンセルを
-/// [`accept`](ModalChild::accept) / [`cancel`](ModalChild::cancel) として
-/// ダイアログへ返してくる。
+/// [`child::open_child_modal`] へ渡す。ウィンドウの表示・モーダル化・テーマの
+/// 親への追従・Esc/Enter/閉じるボタンの読み替え・破棄はライブラリが行い、
+/// OK / キャンセルを [`accept`](ModalChild::accept) / [`cancel`](ModalChild::cancel)
+/// としてダイアログへ返してくる。
 pub trait ModalChild: 'static {
 	/// このダイアログの Slint ウィンドウ ハンドル。
 	fn window(&self) -> &slint::Window;

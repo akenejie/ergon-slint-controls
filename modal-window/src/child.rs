@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use slint::ComponentHandle;
 
-use crate::{ModalChild, MODAL_MODE};
+use crate::{backend, ModalChild, MODAL_MODE};
 
 // --- Windows: タイトルバー整え・所有・中央配置・親の無効化 ---
 
@@ -82,12 +82,8 @@ pub fn enforce_modal_styles(_child: &slint::Window) {}
 #[cfg(windows)]
 pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 	use ergon_slint_controls::platform::main_window_hwnd;
-	use windows_sys::Win32::Foundation::RECT;
 	use windows_sys::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
-	use windows_sys::Win32::UI::WindowsAndMessaging::{
-		GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWLP_HWNDPARENT, SWP_NOACTIVATE, SWP_NOSIZE,
-		SWP_NOZORDER,
-	};
+	use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWLP_HWNDPARENT};
 	let parent_hwnd = main_window_hwnd(parent);
 	let child_hwnd = main_window_hwnd(child);
 	if child_hwnd.is_null() {
@@ -98,22 +94,8 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		SetWindowLongPtrW(child_hwnd, GWLP_HWNDPARENT, parent_hwnd as isize);
 	}
 	enforce_modal_styles(child);
-	// 親ウィンドウの中央へ配置する。
-	unsafe {
-		let (mut pr, mut cr) = (RECT::default(), RECT::default());
-		if GetWindowRect(parent_hwnd, &mut pr) != 0 && GetWindowRect(child_hwnd, &mut cr) != 0 {
-			let w = cr.right - cr.left;
-			let h = cr.bottom - cr.top;
-			let x = pr.left + ((pr.right - pr.left) - w) / 2;
-			let y = pr.top + ((pr.bottom - pr.top) - h) / 2;
-			SetWindowPos(
-				child_hwnd,
-				std::ptr::null_mut(),
-				x, y, 0, 0,
-				SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-			);
-		}
-	}
+	// 位置 (CenterParent) は生成属性として backend フックが適用済み。
+	// 生成後の SetWindowPos 移動はちらつくため行わない。
 	// モーダル: 親ウィンドウを無効化して操作できないようにする。
 	unsafe {
 		EnableWindow(parent_hwnd, 0);
@@ -169,33 +151,12 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 			}
 		}
 	});
-	center_modal_dialog(parent, child);
+	// 位置は座標指定せずウィンドウ マネージャに任せる。transient_for 付きの
+	// ウィンドウを親基準に配置するのは Linux の流儀 (多くのディストリビューション
+	// の WM が自動で親の中央/近傍に置く)。生成後の座標指定移動は、WM が決めた
+	// 配置を上書きする OS のルール逸脱で、Ubuntu 実機ではちらつきとして観測
+	// された。
 	ergon_slint_controls::dialogs::dialog_push();
-}
-
-// 子ウィンドウを親ウィンドウの中央へ移動する。ウィンドウ マネージャが初期配置
-// を決める前に要求する必要があるため、表示直後の再試行用に分離している。
-#[cfg(not(windows))]
-pub fn center_modal_dialog(parent: &slint::Window, child: &slint::Window) {
-	use slint::winit_030::WinitWindowAccessor;
-	parent.with_winit_window(|pw| {
-		// X11 の set_outer_position はクライアント (内側) の位置を設定するため、
-		// 内側同士で中央を計算する。他のプラットフォームは外側で計算する。
-		#[cfg(all(unix, not(target_os = "macos")))]
-		let (pos, psize) = (pw.inner_position().ok(), pw.inner_size());
-		#[cfg(not(all(unix, not(target_os = "macos"))))]
-		let (pos, psize) = (pw.outer_position().ok(), pw.outer_size());
-		let Some(pos) = pos else { return };
-		child.with_winit_window(|cw| {
-			#[cfg(all(unix, not(target_os = "macos")))]
-			let csize = cw.inner_size();
-			#[cfg(not(all(unix, not(target_os = "macos"))))]
-			let csize = cw.outer_size();
-			let x = pos.x + (psize.width as i32 - csize.width as i32) / 2;
-			let y = pos.y + (psize.height as i32 - csize.height as i32) / 2;
-			cw.set_outer_position(slint::winit_030::winit::dpi::PhysicalPosition::new(x, y));
-		});
-	});
 }
 
 #[cfg(not(windows))]
@@ -221,11 +182,13 @@ pub type ModalSlot = Rc<RefCell<Option<ModalSession>>>;
 /// [`ModalSlot`] の弱い参照。タイマー コールバックからスロットへ触るのに使う。
 pub type WeakModalSlot = std::rc::Weak<RefCell<Option<ModalSession>>>;
 
-/// 子ダイアログを表示し、親ウィンドウの中央モーダルとして整える。
+/// 子ダイアログを表示し、モーダル子ウィンドウとして整える。
 ///
-/// ネイティブ ウィンドウの生成を待ってからモーダル化を適用するため、呼び出し
-/// 直後でもウィンドウが中央に来る。閉じるときは必ず [`close_child_modal`]
-/// を使う (hide ではなく破棄される)。
+/// 位置は OS に任せる: Windows は生成時 CenterParent (backend フック)、
+/// Linux は WM の transient 配置 (多くのディストリビューションが親基準で
+/// 配置する)。生成後の座標移動は OS のルール逸脱 (ちらつき) なので行わない。
+/// タイトルバーのテーマは既定で親ウィンドウに揃える。閉じるときは必ず
+/// [`close_child_modal`] を使う (hide ではなく破棄される)。
 pub fn open_child_modal<P: ComponentHandle + 'static, C: ModalChild>(
 	slot: &ModalSlot,
 	parent: &P,
@@ -237,6 +200,13 @@ pub fn open_child_modal<P: ComponentHandle + 'static, C: ModalChild>(
 	// 二重オープン ガード (既に開いているときは何もしない)。
 	if slot.borrow().is_some() {
 		return;
+	}
+	// 子ダイアログのタイトルバーは既定で親ウィンドウに揃える (OS のダイアログ
+	// の慣習)。親のテーマが未確定 (None) のときは継承せず OS 既定に任せる。
+	{
+		use slint::winit_030::WinitWindowAccessor;
+		let theme = parent.window().with_winit_window(|pw| pw.theme()).flatten();
+		backend::set_next_child_theme(theme);
 	}
 	let session = ModalSession {
 		child: child.clone(),

@@ -8,6 +8,43 @@ pub fn encode_wide(s: &str) -> Vec<u16> {
 	s.encode_utf16().chain(Some(0)).collect()
 }
 
+/// ウィンドウ装飾 (タイトルバー) のテーマ。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TitlebarTheme {
+	Light,
+	Dark,
+	/// システム既定に従う (winit へは `None` を渡す)。
+	System,
+}
+
+/// ウィンドウのタイトルバー テーマを指定する (ライブラリの責務)。
+///
+/// Slint の winit バックエンドは検出した色スキームで装飾テーマを固定する。
+/// 内部 UI のスタイルを固定しているアプリでは、装飾も明示的に揃えないと
+/// UI とタイトルバーの明暗が分裂する。winit ウィンドウは外観クエリ待ちで
+/// 生成が遅れることがあるため、生成を待つ非同期タスクで適用する (生成済み
+/// なら即時)。ウィンドウ生成直後に呼ぶ。
+///
+/// モーダル子ダイアログのテーマは modal-window が既定で親に揃えるため、
+/// アプリが個別に指定する必要はない。
+pub fn apply_titlebar_theme<P: slint::ComponentHandle + 'static>(
+	component: &P,
+	theme: TitlebarTheme,
+) {
+	use slint::winit_030::winit::window::Theme;
+	use slint::winit_030::WinitWindowAccessor;
+	let weak = component.as_weak();
+	let _ = slint::spawn_local(async move {
+		let Some(component) = weak.upgrade() else { return };
+		let Ok(winit_window) = component.window().winit_window().await else { return };
+		winit_window.set_theme(match theme {
+			TitlebarTheme::Light => Some(Theme::Light),
+			TitlebarTheme::Dark => Some(Theme::Dark),
+			TitlebarTheme::System => None,
+		});
+	});
+}
+
 // The main window HWND, captured once the native window exists. Passing it as
 // the owner to MessageBoxW makes the box application-modal: while it is up the
 // parent window cannot be selected (clicking it just flashes/shakes, the stock
