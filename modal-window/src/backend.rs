@@ -195,7 +195,7 @@ fn center_over_owner(
 	}
 	// 親の DPI を基準にスケール変換する (子は親と同じモニタに出る想定)。
 	let scale = unsafe { GetDpiForWindow(owner as _) } as f64 / 96.0;
-	let cs = size.to_physical(scale);
+	let cs: slint::winit_030::winit::dpi::PhysicalSize<u32> = size.to_physical(scale);
 	let x = pr.left + ((pr.right - pr.left) - cs.width as i32) / 2;
 	let y = pr.top + ((pr.bottom - pr.top) - cs.height as i32) / 2;
 	attrs.with_position(Position::Physical(PhysicalPosition::new(x, y)))
