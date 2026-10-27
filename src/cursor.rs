@@ -278,7 +278,7 @@ pub fn set_custom_cursor(_key: i64, _build: impl FnOnce() -> CursorBitmap) -> bo
 #[cfg(windows)]
 mod win {
 	use super::{CursorBitmap, SystemCursor};
-	use crate::platform::{encode_wide, main_window_hwnd};
+	use crate::platform::main_window_hwnd;
 	use std::cell::RefCell;
 	use std::os::windows::ffi::OsStrExt;
 	use std::path::Path;

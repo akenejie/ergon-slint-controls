@@ -84,9 +84,11 @@ pub use backend::{mark_next_window_as_child_dialog, prepare_backend};
 #[cfg(windows)]
 pub use backend::{note_owner_hwnd, note_owner_window};
 pub use child::{
-	center_modal_dialog, close_child_modal, dismiss_modal_dialog, enforce_modal_styles,
+	close_child_modal, dismiss_modal_dialog, enforce_modal_styles,
 	open_child_modal, ModalSession, ModalSlot, WeakModalSlot,
 };
+#[cfg(not(windows))]
+pub use child::center_modal_dialog;
 
 // --- 表示方式 (feature 1 箇所で OS 毎の挙動が変わる) ---
 
