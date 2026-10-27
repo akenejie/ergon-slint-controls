@@ -202,10 +202,17 @@ pub fn open_child_modal<P: ComponentHandle + 'static, C: ModalChild>(
 		return;
 	}
 	// 子ダイアログのタイトルバーは既定で親ウィンドウに揃える (OS のダイアログ
-	// の慣習)。親のテーマが未確定 (None) のときは継承せず OS 既定に任せる。
+	// の慣習)。親のテーマは「アプリが明示指定したテーマ」を優先し (winit の
+	// Window::theme() は X11 では XSETTINGS 依存で None を返すことがある)、
+	// 未指定なら winit の現在テーマ、それも無ければ OS 既定に任せる。
 	{
+		use slint::winit_030::winit::window::Theme;
 		use slint::winit_030::WinitWindowAccessor;
-		let theme = parent.window().with_winit_window(|pw| pw.theme()).flatten();
+		let theme = match ergon_slint_controls::platform::applied_titlebar_theme() {
+			Some(ergon_slint_controls::platform::TitlebarTheme::Light) => Some(Theme::Light),
+			Some(ergon_slint_controls::platform::TitlebarTheme::Dark) => Some(Theme::Dark),
+			_ => parent.window().with_winit_window(|pw| pw.theme()).flatten(),
+		};
 		backend::set_next_child_theme(theme);
 	}
 	let session = ModalSession {

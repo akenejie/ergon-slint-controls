@@ -17,6 +17,24 @@ pub enum TitlebarTheme {
 	System,
 }
 
+// apply_titlebar_theme で明示指定したテーマ。winit の Window::theme() は
+// X11 では XSETTINGS 依存で None を返すことがあり、ダイアログの「親への
+// 追従」の真実としては使えないため、指定値をこちらで保持する。
+// 0 = System / 1 = Light / 2 = Dark
+static APPLIED_TITLEBAR_THEME: std::sync::atomic::AtomicU8 =
+	std::sync::atomic::AtomicU8::new(0);
+
+/// [`apply_titlebar_theme`] で明示指定したテーマ (未指定なら `None`)。
+/// modal-window が子ダイアログを親に揃えるのに使う。
+pub fn applied_titlebar_theme() -> Option<TitlebarTheme> {
+	use std::sync::atomic::Ordering::Relaxed;
+	match APPLIED_TITLEBAR_THEME.load(Relaxed) {
+		1 => Some(TitlebarTheme::Light),
+		2 => Some(TitlebarTheme::Dark),
+		_ => None,
+	}
+}
+
 /// ウィンドウのタイトルバー テーマを指定する (ライブラリの責務)。
 ///
 /// Slint の winit バックエンドは検出した色スキームで装飾テーマを固定する。
@@ -33,6 +51,15 @@ pub fn apply_titlebar_theme<P: slint::ComponentHandle + 'static>(
 ) {
 	use slint::winit_030::winit::window::Theme;
 	use slint::winit_030::WinitWindowAccessor;
+	use std::sync::atomic::Ordering::Relaxed;
+	APPLIED_TITLEBAR_THEME.store(
+		match theme {
+			TitlebarTheme::System => 0,
+			TitlebarTheme::Light => 1,
+			TitlebarTheme::Dark => 2,
+		},
+		Relaxed,
+	);
 	let weak = component.as_weak();
 	let _ = slint::spawn_local(async move {
 		let Some(component) = weak.upgrade() else { return };
