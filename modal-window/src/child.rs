@@ -139,8 +139,9 @@ pub fn dismiss_modal_dialog(parent: &slint::Window) {
 
 // Windows 以外はウィンドウ マネージャへ標準のモーダル ヒント (transient /
 // modal / ダイアログ型 / 固定サイズ) を伝え、あわせて親ウィンドウの入力を
-// ergon の dialogs の仕組みで落とす。winit 0.30 には transient/modal の API が
-// 無いため、patches/winit に追加した set_transient_for / set_modal を使う。
+// ergon の dialogs の仕組みで落とす。winit 0.30 上流には transient/modal の
+// API が無いため、winit パッチ フォーク (slint-modal-winit) に追加した
+// set_transient_for / set_modal を使う (フォークは本クレートの必須要件)。
 #[cfg(not(windows))]
 pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 	use slint::winit_030::winit::window::WindowButtons;
@@ -153,9 +154,8 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 	// _NET_WM_STATE_MODAL (EWMH) を付ける。どちらも対応したウィンドウ
 	// マネージャが「暗黙のモーダル」として扱う。加えて親の入力を ergon の
 	// dialogs で落とす (WM がヒントを無視する環境の保険)。
-	// transient / modal ヒントは vendored winit パッチ由来の API を使うため、
-	// そのパッチを使うビルド (feature = "winit-modal-hints") でのみ付ける。
-	// 無効なビルドでは dialog 型ヒント (生成時に付く) だけを WM へ伝える。
+	// transient / modal ヒントは winit パッチ フォーク由来の API を使う
+	// (フォーク無しのビルドは compile_error で排除済み)。
 	#[cfg(all(feature = "winit-modal-hints", unix, not(target_os = "macos")))]
 	let parent_xid = parent.with_winit_window(|pw| pw.xlib_window()).flatten();
 	child.with_winit_window(|cw| {

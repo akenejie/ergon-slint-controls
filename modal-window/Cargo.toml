@@ -6,7 +6,7 @@ description = "モーダル ダイアログ制御ライブラリ (子ウィン�
 license = "MIT OR Apache-2.0"
 
 [features]
-default = []
+default = ["winit-modal-hints"]
 # 全 OS でウィンドウ内オーバーレイに強制する。アプリ側から見た「モーダル方式の
 # フラグ」はこの feature (または force-child-window) を選ぶだけで切り替わる。
 force-in-window-overlay = []
@@ -14,17 +14,17 @@ force-in-window-overlay = []
 force-child-window = []
 # winit パッチ フォーク (https://github.com/akenejie/slint-modal-winit) 由来の
 # API (WindowAttributes::with_dialog_modal_frame / Window::set_transient_for /
-# set_modal) を使うビルドで有効にする。本クレートは既定で fork を参照しない。
+# set_modal) を使う。既定で有効 (必須):
+#
+# Windows はウィンドウ生成後にタイトルバーのアイコンを消せない (winit が
+# スタイル再計算で戻してしまう)。子ダイアログを「生成時点からアイコン無しの
+# ダイアログ枠 (WS_EX_DLGMODALFRAME)」で作るにはフォークが必須。
 # Cargo の [patch.crates-io] はビルドのルート (アプリ) の manifest でしか
-# 有効にならないため、使うアプリ側で次を置く:
+# 有効にならずライブラリから伝播しないため、使うアプリ側で次の 1 行を置く
+# (無いと本クレートは compile_error で弾く):
 #
 #   [patch.crates-io]
-#   winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.1" }
-#
-# 無効でも子ウィンドウ モードは動く (Windows は生成後に Win32 で
-# WS_EX_DLGMODALFRAME を冪等適用、X11 は _NET_WM_WINDOW_TYPE_DIALOG +
-# 親入力の遮断で代替)。有効にすると生成時からのダイアログ枠 (ちらつき無し) と
-# X11 の transient / modal ヒントが付く。
+#   winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.2" }
 winit-modal-hints = []
 
 [dependencies]

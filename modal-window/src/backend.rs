@@ -67,9 +67,9 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 		return Ok(());
 	}
 	// Windows: 子ダイアログを生成時点からダイアログ枠 (WS_EX_DLGMODALFRAME) +
-	// 所有ウィンドウ付きで作る。patches/winit の with_dialog_modal_frame /
-	// with_owner_window が WindowFlags として保持するため、winit のスタイル
-	// 再計算でも外れない。メインウィンドウ自体には何もしない。
+	// 所有ウィンドウ付きで作る。winit パッチ フォークの with_dialog_modal_frame /
+	// (上流の) with_owner_window が WindowFlags として保持するため、winit の
+	// スタイル再計算でも外れない。メインウィンドウ自体には何もしない。
 	#[cfg(windows)]
 	{
 		use slint::winit_030::winit::platform::windows::WindowAttributesExtWindows;
@@ -79,8 +79,8 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 				{
 					return attrs;
 				}
-				// ダイアログ枠 (WS_EX_DLGMODALFRAME) は vendored winit パッチ
-				// 由来の API なので、そのパッチを使うビルドでのみ付けられる。
+				// ダイアログ枠 (WS_EX_DLGMODALFRAME) は winit パッチ フォーク
+				// 由来の API (フォーク無しのビルドは compile_error で排除済み)。
 				#[cfg(feature = "winit-modal-hints")]
 				let attrs = attrs.with_dialog_modal_frame(true);
 				let owner = OWNER_HWND.load(std::sync::atomic::Ordering::Relaxed);

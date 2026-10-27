@@ -39,34 +39,36 @@
 //! [`MODAL_MODE`] は `const` なので、選ばれなかった側の実装は release ビルド
 //! (LTO) で dead-code elimination により除去される。
 //!
-//! # 子ダイアログのスタイル (アイコン無しのダイアログ枠)
+//! # 子ダイアログのスタイル (アイコン無しのダイアログ枠) — winit フォーク必須
 //!
 //! モーダル子ダイアログの慣習的なスタイルは「アイコン無しのダイアログ枠」
-//! (Windows: `WS_EX_DLGMODALFRAME`)。本クレートは
-//! [`backend::prepare_backend`] の生成フックと、生成後の
-//! [`child::enforce_modal_styles`] (Win32 で冪等に整える) の 2 段構えで
-//! 適用するため、**fork 無しでも子ダイアログ モードは動く**。
+//! (Windows: `WS_EX_DLGMODALFRAME`)。**Windows はウィンドウ生成後に
+//! タイトルバーのアイコンを消せない** (生成後の Win32 修正は winit のスタイル
+//! 再計算で戻される)。この教訓から、本クレートは子ダイアログを生成時点から
+//! 正しい属性で作るため winit パッチ フォーク
+//! (https://github.com/akenejie/slint-modal-winit) を**必須**としている
+//! (feature `winit-modal-hints` が既定で有効、無効化は `compile_error!` で弾く):
 //!
-//! 追加で次の 2 点を求める場合だけ、任意の winit パッチ フォーク
-//! (https://github.com/akenejie/slint-modal-winit) を feature
-//! `winit-modal-hints` と併せて有効にする:
-//!
-//! - 生成時点から `WS_EX_DLGMODALFRAME` を与え、初回描画のちらつきを消す
-//! - X11 で `WM_TRANSIENT_FOR` / `_NET_WM_STATE_MODAL` を付ける
-//!   (無効時は `_NET_WM_WINDOW_TYPE_DIALOG` + 親入力の遮断で代替する)
+//! - Windows: `WindowAttributes::with_dialog_modal_frame` で生成時から
+//!   `WS_EX_DLGMODALFRAME` (アイコン無しのダイアログ枠)。`WindowFlags` として
+//!   保持されるため winit のスタイル再計算でも外れない
+//! - X11: `Window::set_transient_for` / `set_modal` で
+//!   `WM_TRANSIENT_FOR` / `_NET_WM_STATE_MODAL` を付ける
+//!   (`_NET_WM_WINDOW_TYPE_DIALOG` は上流 API で生成時に付与)
 //!
 //! Cargo の `[patch.crates-io]` は**ビルドのルート (アプリ) の manifest で
-//! しか有効にならず、ライブラリから消費側へ伝播しない**。したがってこの
-//! feature を使うアプリが、自分の Cargo.toml に次の 1 行を置く:
+//! しか有効にならず、ライブラリから消費側へ伝播しない** (Cargo の仕様)。
+//! したがって本クレートを使うアプリは、自分の Cargo.toml に次の 1 行を置く:
 //!
 //! ```toml
 //! [patch.crates-io]
-//! winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.1" }
+//! winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.2" }
 //! ```
 //!
-//! 本クレート自身は fork を参照しない (既定ビルドは crates.io の winit で
-//! 完結する)。フォークは upstream winit v0.30.13 を基準にしたコミット列なので、
-//! 差分は `git diff v0.30.13..main` で見え、上流追従は merge で行える。
+//! 本リポジトリ (ergon-slint-controls) のワークスペースも同じパッチを持ち、
+//! 自身のビルド/テストはフォーク前提で行う。フォークは upstream winit
+//! v0.30.13 を基準にしたコミット列なので、差分は `git diff v0.30.13..main`
+//! で見え、上流追従は merge で行える。
 //!
 //! # 起動時の準備 (子ウィンドウ モードのみ意味を持つ)
 //!
@@ -76,6 +78,19 @@
 //! + 所有ウィンドウ / X11: `_NET_WM_WINDOW_TYPE_DIALOG`) 付きで作られる。
 //! オーバーレイ モードでは子ウィンドウを生成しないため、この準備は何もしない
 //! (既定の winit バックエンドに任せる)。
+
+// winit パッチ フォークが無いと子ダイアログを「生成時点からアイコン無しの
+// ダイアログ枠」にできない (Windows は生成後のタイトルバー アイコン除去が
+// 不可能なため)。無効化は設定ミスなので、パッチの当て方とともに明示的に弾く。
+#[cfg(not(feature = "winit-modal-hints"))]
+compile_error!(
+	"modal-window には winit パッチ フォークが必要です (子ダイアログを生成時点から \
+	アイコン無しのダイアログ枠にするため。Windows は生成後のアイコン除去が不可能)。\
+	アプリの Cargo.toml に次を追加してください:\n\
+	[patch.crates-io]\n\
+	winit = { git = \"https://github.com/akenejie/slint-modal-winit\", tag = \"v0.30.13-modal.2\" }\n\
+	(feature winit-modal-hints は既定で有効です)"
+);
 
 pub mod backend;
 pub mod child;
