@@ -1120,7 +1120,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "ergon-slint-controls"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "gtk",
  "slint",
@@ -5987,8 +5987,7 @@ checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 [[package]]
 name = "winit"
 version = "0.30.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6755fa58a9f8350bd1e472d4c3fcc25f824ec358933bba33306d0b63df5978d"
+source = "git+https://github.com/akenejie/slint-modal-winit?tag=v0.30.13-modal.2#4a6f8d2b03c24e9fcca242ca5bf2cf02cbd70d88"
 dependencies = [
  "ahash",
  "android-activity",
