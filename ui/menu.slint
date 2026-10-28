@@ -17,7 +17,7 @@ import { MenuBarItemBase, MenuBarBase, MenuFrameBase, MenuItemBase } from "menu-
 export component FluentMenuBarItem {
 	in property <MenuEntry> entry;
 	in property <string> description;
-	in property <string> access-key: "";
+	// Alt 押下中はタイトルのアクセスキー文字 (&X) に下線を引く。
 	in property <bool> access-key-underline: false;
 	// このボタンのメニューを開いている間は背景色を付ける。
 	in property <bool> menu-open: false;
@@ -31,7 +31,6 @@ export component FluentMenuBarItem {
 
 	base := MenuBarItemBase {
 		entry: root.entry;
-		access-key: root.access-key;
 		access-key-underline: root.access-key-underline;
 		menu-open: root.menu-open;
 		font-size: 1.0909rem;
@@ -84,14 +83,11 @@ export component FluentMenuBarImpl {
 	}
 }
 
-/// ドロップダウン項目 1 行分のデータ。`entry` が項目本体 (有効状態を含む
-/// 唯一の情報源)、残りは見た目の調整。行番号はモデルの index。
+/// ドロップダウン項目 1 行分のデータ。`entry` が項目本体 (有効状態と
+/// "&X" アクセスキー記法を含むタイトルの唯一の情報源)、`shortcut-text` は
+/// 見た目の調整。行番号はモデルの index。
 export struct MenuItemView {
 	entry: MenuEntry,
-	// Windows 風アクセスキー "(X)" の文字 (省略可)。
-	access-key: string,
-	// タイトル末尾の "..." を括弧閉じの後ろへ回す。
-	ellipsis: bool,
 	// 右側に表示するショートカット表記 (例 "Ctrl+Z", 省略時は entry.shortcut)。
 	shortcut-text: string,
 }
@@ -102,10 +98,8 @@ export struct MenuItemView {
 export component FluentMenuItem {
 	in property <MenuEntry> entry <=> base.entry;
 	in property <bool> is-current <=> base.is-current;
-	in property <string> access-key: "";
+	// Alt 押下中はタイトルのアクセスキー文字 (&X) に下線を引く。
 	in property <bool> access-key-underline: false;
-	// タイトル末尾の "..." を括弧閉じの後ろに回すためのフラグ。
-	in property <bool> ellipsis: false;
 	// 項目の右側に出すショートカット表記 (例 "Ctrl+Z")。
 	in property <string> shortcut-text: "";
 
@@ -122,9 +116,7 @@ export component FluentMenuItem {
 		padding-right: entry.is-separator ? 0px : 1px;
 
 		base := MenuItemBase {
-			access-key: root.access-key;
 			access-key-underline: root.access-key-underline;
-			ellipsis: root.ellipsis;
 			shortcut-text: root.shortcut-text;
 			default-foreground: #000000E6;
 			alternate-foreground: #00000099;
@@ -173,9 +165,7 @@ export component FluentMenuFrame inherits MenuFrameBase {
 
 	for it[i] in root.items : FluentMenuItem {
 		entry: it.entry;
-		access-key: it.access-key;
 		access-key-underline: root.access-key-underline;
-		ellipsis: it.ellipsis;
 		shortcut-text: it.shortcut-text;
 		is-current: root.current-row == i;
 		set-current => { root.current-row = i; }

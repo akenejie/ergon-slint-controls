@@ -4,20 +4,42 @@
 // Copied from i-slint-compiler widgets/common/menu-base.slint and modified:
 //   - MenuBarItemBase exposes `has-hover` so the app can show a description
 //     line while the pointer is over a top-level menu button.
-//   - The labels take `access-key` / `access-key-underline`, showing a
-//     Windows-style "(X)" whose letter is underlined while Alt is held.
-//     They are built from plain `Text` elements: `StyledText` consumes mouse
-//     events (for link support) and would starve the parent TouchArea of
-//     hover/click.
+//   - The labels take `access-key-underline` and parse the Windows-style `&`
+//     access-key markers in the title themselves ("&File" → F に下線、
+//     "&&" → リテラルの &)。"&" の位置は文字列として走査する必要があるため、
+//     分解は `MenuAccessKey.parse` (Rust 実装) が担う。`Text` を並べて組むの
+//     は `StyledText` がマウスイベントを消費し、親 TouchArea の hover/click
+//     を奪うため。
 
-// Windows 風のメニューラベル。タイトルの後に "(X)" を付け、Alt 押下中は
-// キー文字の下に下線を引く。`Text` を並べて組むので親の TouchArea を妨げない。
+// タイトルをアクセスキー記法で分解した結果。
+// before + key + after が元のタイトル ( marker を除く) に一致する。
+// key が空文字列ならタイトルにアクセスキーはない。
+export struct AccessKeyParts {
+	before: string,
+	key: string,
+	after: string,
+}
+
+// タイトルの "&" 記法を分解する。slint の文字列関数には走査手段が無いため、
+// 実装は Rust 側 (ergon_slint_controls::menu::parse_access_key) が担う。
+// アプリは起動時にハンドラを差し替えること
+// (ui.global::<MenuAccessKey>().on_parse(...))。未差し替えの場合はこの既定
+// 実装が動き、marker は解釈されずそのまま表示される。
+// タイトルの "&" 記法を分解する。slint の文字列関数には走査手段が無いため、
+// 実装は Rust 側 (ergon_slint_controls::menu::parse_access_key) が担う。
+// アプリは起動時にハンドラを差し替えること
+// (ui.global::<MenuAccessKey>().on_parse(...))。未差し替えの場合は空の結果が
+// 返るため、AccessKeyLabel は marker を解釈せず生のタイトルを表示する。
+export global MenuAccessKey {
+	pure callback parse(title: string) -> AccessKeyParts;
+}
+
+// Windows 風のメニューラベル。タイトル中の "&X" をアクセスキー (Alt 押下中は
+// 下線) として、"&&" をリテラルの & として描画する。`Text` を並べて組むので
+// 親の TouchArea を妨げない。
 component AccessKeyLabel inherits HorizontalLayout {
 	in property <string> text;
-	// "..." は括弧閉じの直後に置くため、タイトル側では末尾の "..." を外して
-	// これを true にする (Windows のメニュー表記に合わせる)。
-	in property <bool> ellipsis: false;
-	in property <string> access-key: "";
+	// アクセスキー文字に下線を引く (Alt 押下中)。
 	in property <bool> underline: false;
 	in property <brush> color;
 	in property <length> font-size;
@@ -26,27 +48,29 @@ component AccessKeyLabel inherits HorizontalLayout {
 	alignment: start;
 	cross-axis-alignment: center;
 
-	Text {
+	property <AccessKeyParts> parts: MenuAccessKey.parse(root.text);
+
+	// 未接続 (parse が空を返す) のときは marker を解釈せず生のタイトルを出す。
+	if parts.before == "" && parts.key == "" && parts.after == "" && root.text != "" : Text {
 		text: root.text;
 		color: root.color;
 		font-size: root.font-size;
 		vertical-alignment: center;
 	}
-	// アクセスキーの括弧の前には半角スペースを入れる。
-	if root.access-key != "" : Text {
-		text: " (";
+	Text {
+		text: parts.before;
 		color: root.color;
 		font-size: root.font-size;
 		vertical-alignment: center;
 	}
-	if root.access-key != "" : Rectangle {
+	if parts.key != "" : Rectangle {
 		min-width: key-text.preferred-width;
 		preferred-width: key-text.preferred-width;
 		min-height: key-text.preferred-height;
 		preferred-height: key-text.preferred-height;
 
 		key-text := Text {
-			text: root.access-key;
+			text: parts.key;
 			color: root.color;
 			font-size: root.font-size;
 			vertical-alignment: center;
@@ -60,15 +84,8 @@ component AccessKeyLabel inherits HorizontalLayout {
 			background: root.color;
 		}
 	}
-	if root.access-key != "" : Text {
-		text: ")";
-		color: root.color;
-		font-size: root.font-size;
-		vertical-alignment: center;
-	}
-	// 括弧閉じの直後に "..." を置く (間隔は spacing: 0px なので詰まる)。
-	if root.ellipsis : Text {
-		text: "...";
+	if parts.key != "" : Text {
+		text: parts.after;
 		color: root.color;
 		font-size: root.font-size;
 		vertical-alignment: center;
@@ -91,9 +108,7 @@ export component MenuBarItemBase {
 	in property <length> horizontal-padding;
 	in property <length> top-padding;
 	in property <length> bottom-padding;
-	// Modification: Windows-style access key shown as "(X)"; the letter is
-	// underlined while `access-key-underline` is set (Alt held).
-	in property <string> access-key: "";
+	// Alt 押下中はタイトルのアクセスキー文字 (&X) に下線を引く。
 	in property <bool> access-key-underline: false;
 
 	// Modification: expose the hover state for the bottom status line.
@@ -114,7 +129,6 @@ export component MenuBarItemBase {
 
 				label := AccessKeyLabel {
 					text: root.entry.title;
-					access-key: root.access-key;
 					underline: root.access-key-underline;
 					color: root.default-foreground;
 				}
@@ -207,12 +221,8 @@ export component MenuItemBase {
 	in property <brush> separator-color;
 	in property <length> font-size <=> label.font-size;
 	in property <length> border-radius <=> background-layer.border-radius;
-	// Modification: Windows-style access key shown as "(X)"; the letter is
-	// underlined while `access-key-underline` is set (Alt held).
-	in property <string> access-key: "";
+	// Alt 押下中はタイトルのアクセスキー文字 (&X) に下線を引く。
 	in property <bool> access-key-underline: false;
-	// タイトル末尾の "..." を括弧閉じの後ろに回すためのフラグ。
-	in property <bool> ellipsis: false;
 	// Modification: explicit shortcut text shown right-aligned in the item
 	// (e.g. "Ctrl+Z"); when empty, falls back to the MenuEntry shortcut.
 	in property <string> shortcut-text: "";
@@ -269,9 +279,7 @@ export component MenuItemBase {
 
 				label := AccessKeyLabel {
 					text: root.entry.title;
-					access-key: root.access-key;
 					underline: root.access-key-underline;
-					ellipsis: root.ellipsis;
 					color: root.default-foreground;
 					// ラベルが余白を吸収し、ショートカット表示を右端へ寄せる。
 					horizontal-stretch: 1;
