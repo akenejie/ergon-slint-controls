@@ -37,6 +37,10 @@ export component AccessKeyLabel inherits HorizontalLayout {
 	in property <bool> underline: false;
 	in property <brush> color;
 	in property <length> font-size;
+	// フォントの太さ (呼び出し側が旧実装と同じ normal を明示する)。
+	in property <int> font-weight: 400;
+	// テキストの横寄せ (ボタンは center、メニュー項目は left)。
+	in property <TextHorizontalAlignment> horizontal-alignment: left;
 	out property <string> plain-text: parts.before + parts.key + parts.after;
 
 	property <AccessKeyParts> parts: MenuAccessKey.parse(root.text);
@@ -57,6 +61,8 @@ export component AccessKeyLabel inherits HorizontalLayout {
 			text: plain-text == "" ? root.text : plain-text;
 			color: root.color;
 			font-size: root.font-size;
+			font-weight: root.font-weight;
+			horizontal-alignment: root.horizontal-alignment;
 			vertical-alignment: center;
 		}
 
