@@ -7,14 +7,13 @@
 //       ここでは選択=押し込まれた(凹んでいる)見た目にする。
 
 import { AppTooltip } from "project-tooltip.slint";
+import { AccessKeyLabel } from "menu-base.slint";
 
 export component ModeToggleButton inherits Rectangle {
+	// タイトル中の "&X" をアクセスキーとして描画する (メニューと同じ記法)。
+	// access-key-underline が true の間だけその文字に下線を引く。
 	in property <string> text;
-	// アクセラレータ (ショートカット) 文字。空なら text をそのまま描く。
-	// 指定した場合は text を「前」「下線付きのアクセラレータ」「後」の3つに
-	// 分けて描画し、アクセラレータの下にだけ下線を引く。
-	in property <string> accent;
-	in property <string> text-after;
+	in property <bool> access-key-underline: true;
 	// マウスを重ねると出る説明。空ならツールチップを出さない。
 	in property <string> tooltip-text;
 	in property <image> icon;
@@ -25,6 +24,7 @@ export component ModeToggleButton inherits Rectangle {
 	in property <bool> colorize-icon;
 	out property <bool> has-focus: i-focus-scope.has-focus;
 	out property <bool> pressed: self.enabled && i-touch-area.pressed;
+	out property <string> plain-text: i-label.plain-text;
 	in-out property <bool> checked;
 
 	callback clicked;
@@ -42,7 +42,7 @@ export component ModeToggleButton inherits Rectangle {
 	accessible-enabled: root.enabled;
 	accessible-checkable: root.checkable;
 	accessible-checked: root.checked;
-	accessible-label: root.accent != "" ? root.text + root.accent + root.text-after : root.text;
+	accessible-label: i-label.plain-text;
 	accessible-action-default => { i-touch-area.clicked(); }
 
 	states [
@@ -111,60 +111,11 @@ export component ModeToggleButton inherits Rectangle {
 				colorize: root.colorize-icon ? root.text-color : transparent;
 			}
 
-			if (root.text != "" && root.accent == ""): Text {
-				font-size: 1.0909rem;
-				font-weight: FontWeight.normal;
-				horizontal-alignment: center;
-				vertical-alignment: center;
+			i-label := AccessKeyLabel {
 				text: root.text;
+				underline: root.access-key-underline;
 				color: root.text-color;
-				animate color { duration: 150ms; }
 				accessible-role: none;
-			}
-
-			// アクセラレータ文字だけ下線を引く。文字は1つの Text で描き
-			// (分割すると CJK と Latin の行送りがずれるため)、下線だけを
-			// 接頭辞の幅ぶんずらして重ねる。幅は透明の Text で測る。
-			if (root.accent != ""): Rectangle {
-				width: label.preferred-width;
-				height: label.preferred-height;
-
-				label := Text {
-					width: parent.width;
-					height: parent.height;
-					font-size: 1.0909rem;
-					font-weight: FontWeight.normal;
-					horizontal-alignment: center;
-					vertical-alignment: center;
-					text: root.text + root.accent + root.text-after;
-					color: root.text-color;
-					animate color { duration: 150ms; }
-					accessible-role: none;
-				}
-
-				Rectangle {
-					x: prefix-metrics.preferred-width;
-					// 下線は文字ボックスの下端ではなくベースライン直下に置く
-					// (preferred-height はフォントにより行間を含み下がり過ぎる)。
-					y: label.y + label.font-metrics.ascent + 1px;
-					width: accent-metrics.preferred-width;
-					height: 1px;
-					background: root.text-color;
-					animate background { duration: 150ms; }
-				}
-
-				prefix-metrics := Text {
-					opacity: 0;
-					text: root.text;
-					font-size: 1.0909rem;
-					font-weight: FontWeight.normal;
-				}
-				accent-metrics := Text {
-					opacity: 0;
-					text: root.accent;
-					font-size: 1.0909rem;
-					font-weight: FontWeight.normal;
-				}
 			}
 		}
 	}

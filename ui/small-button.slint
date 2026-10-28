@@ -11,9 +11,13 @@
 // ライブラリ側(i-slint-compiler/widgets/fluent/button.slint)は変更しない。
 
 import { AppTooltip } from "project-tooltip.slint";
+import { AccessKeyLabel } from "menu-base.slint";
 
 export component SmallButton inherits Rectangle {
 	in property <string> text;
+	// タイトル中の "&X" をアクセスキーとして描画し、access-key-underline が
+	// true の間だけその文字に下線を引く (メニューと同じ記法)。
+	in property <bool> access-key-underline: false;
 	// マウスを重ねると出る説明。空ならツールチップを出さない。
 	in property <string> tooltip-text;
 	in property <image> icon;
@@ -23,6 +27,7 @@ export component SmallButton inherits Rectangle {
 	in property <bool> colorize-icon;
 	out property <bool> has-focus: i-focus-scope.has-focus;
 	out property <bool> pressed: self.enabled && i-touch-area.pressed;
+	out property <string> plain-text: i-label.plain-text;
 
 	callback clicked;
 
@@ -83,14 +88,10 @@ export component SmallButton inherits Rectangle {
 				colorize: root.colorize-icon ? root.text-color : transparent;
 			}
 
-			if (root.text != ""): Text {
-				font-size: 1.0909rem;
-				font-weight: FontWeight.normal;
-				horizontal-alignment: center;
-				vertical-alignment: center;
+			i-label := AccessKeyLabel {
 				text: root.text;
+				underline: root.access-key-underline;
 				color: root.text-color;
-				animate color { duration: 150ms; }
 				accessible-role: none;
 			}
 		}
