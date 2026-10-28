@@ -41,8 +41,9 @@ export component AccessKeyLabel inherits HorizontalLayout {
 
 	property <AccessKeyParts> parts: MenuAccessKey.parse(root.text);
 
-	// 外側のレイアウトに伸縮させない (伸びると文字と下線の位置がずれる)。
-	vertical-stretch: 0;
+	// 親レイアウトの中で縦方向は中央に置く (伸びない子は上寄りになるため)。
+	// 横方向は呼び出し側の horizontal-stretch に従う。
+	cross-axis-self-alignment: center;
 
 	Rectangle {
 		// 表示 Text に固定サイズで張り付く (旧実装と同じジオメトリ)。
