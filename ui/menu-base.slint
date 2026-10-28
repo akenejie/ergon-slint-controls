@@ -20,62 +20,64 @@ export global MenuAccessKey {
 	pure callback parse(title: string) -> AccessKeyParts;
 }
 
-// Windows 風のメニューラベル。タイトル中の "&X" をアクセスキー (Alt 押下中は
-// 下線) として、"&&" をリテラルの & として描画する。`Text` を並べて組むので
-// 親の TouchArea を妨げない。
+// ラベルのアクセスキー押下を伝えるハブ。アプリのキー処理から press を呼ぶと、
+// 一致するアクセスキーを持つ Label が反応してフォーカスを動かす。
+export global AccessKeyHub {
+	in-out property <string> pressed: "";
+	public function press(key: string) {
+		self.pressed = key.to-uppercase();
+	}
+}
+
+// Windows 風のメニューラベル。タイトル中の "&X" をアクセスキー (underline が
+// true の間は下線) として、"&&" をリテラルの & として描画する。
 export component AccessKeyLabel inherits HorizontalLayout {
 	in property <string> text;
-	// アクセスキー文字に下線を引く (Alt 押下中)。
+	// アクセスキー文字に下線を引く。
 	in property <bool> underline: false;
 	in property <brush> color;
 	in property <length> font-size;
 	out property <string> plain-text: parts.before + parts.key + parts.after;
 
-	spacing: 0px;
-	alignment: start;
-	cross-axis-alignment: center;
-
 	property <AccessKeyParts> parts: MenuAccessKey.parse(root.text);
 
-	// 未接続 (parse が空を返す) のときは marker を解釈せず生のタイトルを出す。
-	if parts.before == "" && parts.key == "" && parts.after == "" && root.text != "" : Text {
-		text: root.text;
-		color: root.color;
-		font-size: root.font-size;
-		vertical-alignment: center;
-	}
-	Text {
-		text: parts.before;
-		color: root.color;
-		font-size: root.font-size;
-		vertical-alignment: center;
-	}
-	if parts.key != "" : Rectangle {
-		min-width: key-text.preferred-width;
-		preferred-width: key-text.preferred-width;
-		min-height: key-text.preferred-height;
-		preferred-height: key-text.preferred-height;
+	Rectangle {
+		min-width: display.preferred-width;
+		min-height: display.preferred-height;
 
-		key-text := Text {
-			text: parts.key;
+		// 文字は 1 つの Text で描く (分割すると CJK と Latin の行送りがずれ、
+		// 文字位置が変わってしまうため)。下線はその上に重ねる。
+		// parse が未接続で空のときは marker を解釈せず生のタイトルを出す。
+		display := Text {
+			width: 100%;
+			height: 100%;
+			text: plain-text == "" ? root.text : plain-text;
 			color: root.color;
 			font-size: root.font-size;
 			vertical-alignment: center;
 		}
 
-		if root.underline : Rectangle {
-			x: key-text.x;
-			y: key-text.y + key-text.font-metrics.ascent + 1px;
-			width: key-text.width;
+		// 下線はアクセスキー文字の位置 (before の幅) に、key の幅ぶんだけ
+		// 重ねる。幅は隠し Text で測る。y はテキストのベースライン直下
+		// (preferred-height は行間を含み下がり過ぎるため)。
+		if parts.key != "" && root.underline : Rectangle {
+			x: prefix-metrics.preferred-width;
+			y: (parent.height - (display.font-metrics.ascent + display.font-metrics.descent)) / 2 + display.font-metrics.ascent + 1px;
+			width: key-metrics.preferred-width;
 			height: 1px;
 			background: root.color;
 		}
-	}
-	if parts.key != "" : Text {
-		text: parts.after;
-		color: root.color;
-		font-size: root.font-size;
-		vertical-alignment: center;
+
+		prefix-metrics := Text {
+			opacity: 0;
+			text: parts.before;
+			font-size: root.font-size;
+		}
+		key-metrics := Text {
+			opacity: 0;
+			text: parts.key;
+			font-size: root.font-size;
+		}
 	}
 }
 

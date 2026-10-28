@@ -3,22 +3,48 @@
 // AccessKeyLabel) と同じ記法を、メニュー以外 (入力欄のキャプション等) でも
 // 使えるようにしたもの。
 //
-// タイトル中の "&X" はアクセスキー (access-key-underline が true の間だけ
-// 下線を表示) として、"&&" はリテラルの & として描画する。アクセスキーは
-// タイトルにのみ書く (別プロパティは無い)。
+// タイトル中の "&X" はアクセスキー (常に下線を表示) として、"&&" はリテラルの
+// & として描画する。アクセスキーはタイトルにのみ書く (別プロパティは無い)。
 //
-// アクセスキーが押されたときの振る舞い (フォーカス移動など) は、呼び出し側
-// のキー処理で行う。押された文字との照合はタイトルから
-// ergon_slint_controls::menu::access_key_char で読む。ターゲットのコントロール
-// は take-focus (SpinBox 等が実装) や forward-focus でアクティブにする。
+// アクセスキーに対応するコントロールは forward-focus で指定する:
+//
+// ```slint
+// Label {
+//     text: "線の太さ (&G)";
+//     forward-focus: pen-spin;   // アクセスキー押下でフォーカスが移る先
+// }
+// ```
+//
+// アプリのキー処理は `AccessKeyHub.press(文字)` を呼ぶだけでよく、一致する
+// アクセスキーを持つ Label がそのコントロールへフォーカスを移す。
 
-import { AccessKeyLabel } from "menu-base.slint";
+import { AccessKeyHub, AccessKeyLabel, MenuAccessKey } from "menu-base.slint";
 
-export component Label inherits AccessKeyLabel {
-	// アクセスキー文字に下線を引く (Alt 押下中)。AccessKeyLabel.underline の
-	// 別名 (メニューと同じ名前に揃える)。
-	in property <bool> access-key-underline <=> root.underline;
+export component Label inherits FocusScope {
+	in property <string> text;
+	in property <brush> color: #000000E6;
+	in property <length> font-size: 1rem;
 
-	color: #000000E6;
-	font-size: 1rem;
+	min-width: i-label.min-width;
+	min-height: i-label.preferred-height;
+
+	// 常時下線 (メニューバーではないため Alt で切り替えない)。
+	i-label := AccessKeyLabel {
+		y: (parent.height - self.height) / 2;
+		text: root.text;
+		underline: true;
+		color: root.color;
+		font-size: root.font-size;
+	}
+
+	// アクセスキーが押されたら自分にフォーカスする (forward-focus が設定
+	// されていればさらにそのコントロールへフォーカスが転送される)。
+	property <bool> hit: root.text != "" && AccessKeyHub.pressed != ""
+		&& AccessKeyHub.pressed.to-uppercase() == MenuAccessKey.parse(root.text).key.to-uppercase();
+	changed hit => {
+		if (self.hit) {
+			root.focus();
+			AccessKeyHub.pressed = "";
+		}
+	}
 }
