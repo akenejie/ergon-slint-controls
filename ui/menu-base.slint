@@ -4,32 +4,18 @@
 // Copied from i-slint-compiler widgets/common/menu-base.slint and modified:
 //   - MenuBarItemBase exposes `has-hover` so the app can show a description
 //     line while the pointer is over a top-level menu button.
-//   - The labels take `access-key-underline` and parse the Windows-style `&`
-//     access-key markers in the title themselves ("&File" → F に下線、
-//     "&&" → リテラルの &)。"&" の位置は文字列として走査する必要があるため、
-//     分解は `MenuAccessKey.parse` (Rust 実装) が担う。`Text` を並べて組むの
-//     は `StyledText` がマウスイベントを消費し、親 TouchArea の hover/click
-//     を奪うため。
+//   - The labels parse the Windows-style `&` access-key markers in the title
+//     themselves ("&File" → F に下線、"&&" → リテラルの &)。`Text` を並べて
+//     組むのは `StyledText` がマウスイベントを消費し、親 TouchArea の
+//     hover/click を奪うため。
 
-// タイトルをアクセスキー記法で分解した結果。
-// before + key + after が元のタイトル ( marker を除く) に一致する。
-// key が空文字列ならタイトルにアクセスキーはない。
 export struct AccessKeyParts {
 	before: string,
 	key: string,
 	after: string,
 }
 
-// タイトルの "&" 記法を分解する。slint の文字列関数には走査手段が無いため、
-// 実装は Rust 側 (ergon_slint_controls::menu::parse_access_key) が担う。
-// アプリは起動時にハンドラを差し替えること
-// (ui.global::<MenuAccessKey>().on_parse(...))。未差し替えの場合はこの既定
-// 実装が動き、marker は解釈されずそのまま表示される。
-// タイトルの "&" 記法を分解する。slint の文字列関数には走査手段が無いため、
-// 実装は Rust 側 (ergon_slint_controls::menu::parse_access_key) が担う。
-// アプリは起動時にハンドラを差し替えること
-// (ui.global::<MenuAccessKey>().on_parse(...))。未差し替えの場合は空の結果が
-// 返るため、AccessKeyLabel は marker を解釈せず生のタイトルを表示する。
+// 実装は ergon_slint_controls::menu::parse_access_key (Rust 側)。
 export global MenuAccessKey {
 	pure callback parse(title: string) -> AccessKeyParts;
 }
@@ -37,12 +23,13 @@ export global MenuAccessKey {
 // Windows 風のメニューラベル。タイトル中の "&X" をアクセスキー (Alt 押下中は
 // 下線) として、"&&" をリテラルの & として描画する。`Text` を並べて組むので
 // 親の TouchArea を妨げない。
-component AccessKeyLabel inherits HorizontalLayout {
+export component AccessKeyLabel inherits HorizontalLayout {
 	in property <string> text;
 	// アクセスキー文字に下線を引く (Alt 押下中)。
 	in property <bool> underline: false;
 	in property <brush> color;
 	in property <length> font-size;
+	out property <string> plain-text: parts.before + parts.key + parts.after;
 
 	spacing: 0px;
 	alignment: start;

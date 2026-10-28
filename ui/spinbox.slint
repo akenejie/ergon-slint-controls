@@ -47,6 +47,12 @@ export component SpinBoxBase {
 		}
 	}
 
+	// キーボード入力を受けられるようにする (ラベルのアクセスキーからの
+	// フォーカス移動先として使う)。
+	public function take-focus() {
+		text-input.focus();
+	}
+
 	private property <length> scroll-delta: 2px;
 
 	forward-focus: text-input;
@@ -151,6 +157,12 @@ export component SpinBox {
 	in-out property <int> value <=> base.value;
 
 	callback edited <=> base.edited;
+
+	// 数値入力欄にキーボードフォーカスを移す (ラベルのアクセスキーからの
+	// フォーカス移動先として使う)。
+	public function take-focus() {
+		base.take-focus();
+	}
 
 	// 128px -> サイドバー用に縮小 (矢印ボタン・余白も以下で縮小)。
 	min-width: max(64px, layout.min-width);

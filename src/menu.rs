@@ -2,13 +2,13 @@
 //!
 //! slint の文字列関数には走査手段 (split / index / slice) がないため、
 //! タイトルの "&" 記法の分解はここ (Rust) が担う。描画側は
-//! `MenuAccessKey.parse` グローバル純粋コールバック (ui/menu-base.slint) を
-//! 通じてこの結果を使う。アプリは起動時に次の 1 回を差し込む:
+//! `MenuAccessKey.parse` グローバル純粋コールバック (ui/menu-base.slint) 経由
+//! でこの結果を使う。ハンドラの差し込み:
 //!
 //! ```ignore
 //! ui.global::<MenuAccessKey>().on_parse(|title| {
 //!     let p = ergon_slint_controls::menu::parse_access_key(&title);
-//!     MenuAccessKeyParts {
+//!     AccessKeyParts {
 //!         before: p.before.into(),
 //!         key: p.key.into(),
 //!         after: p.after.into(),
@@ -22,8 +22,8 @@
 //! - 末尾の孤立した `&` → リテラルの `&`
 //! - `&` が無ければアクセスキーなし
 
-/// [`parse_access_key`] の分解結果。`before + key + after` は marker を除いた
-/// 元のタイトルに一致する。`key` が空ならアクセスキーなし。
+/// `before + key + after` は marker を除いた元のタイトルに一致する。
+/// `key` が空ならアクセスキーなし。
 pub struct AccessKeyParts {
 	pub before: String,
 	pub key: String,

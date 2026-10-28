@@ -1,0 +1,24 @@
+// Label
+// "&" アクセスキー記法を解釈するテキストラベル。メニュー (menu-base.slint の
+// AccessKeyLabel) と同じ記法を、メニュー以外 (入力欄のキャプション等) でも
+// 使えるようにしたもの。
+//
+// タイトル中の "&X" はアクセスキー (access-key-underline が true の間だけ
+// 下線を表示) として、"&&" はリテラルの & として描画する。アクセスキーは
+// タイトルにのみ書く (別プロパティは無い)。
+//
+// アクセスキーが押されたときの振る舞い (フォーカス移動など) は、呼び出し側
+// のキー処理で行う。押された文字との照合はタイトルから
+// ergon_slint_controls::menu::access_key_char で読む。ターゲットのコントロール
+// は take-focus (SpinBox 等が実装) や forward-focus でアクティブにする。
+
+import { AccessKeyLabel } from "menu-base.slint";
+
+export component Label inherits AccessKeyLabel {
+	// アクセスキー文字に下線を引く (Alt 押下中)。AccessKeyLabel.underline の
+	// 別名 (メニューと同じ名前に揃える)。
+	in property <bool> access-key-underline <=> root.underline;
+
+	color: #000000E6;
+	font-size: 1rem;
+}
