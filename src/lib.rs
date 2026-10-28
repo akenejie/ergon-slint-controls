@@ -6,6 +6,7 @@ pub mod cursor;
 pub mod dialogs;
 #[cfg(target_os = "linux")]
 pub mod gtk;
+pub mod menu;
 pub mod platform;
 
 slint::include_modules!();
