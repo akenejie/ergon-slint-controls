@@ -84,16 +84,16 @@ export component FluentMenuBarImpl {
 	}
 }
 
-export component FluentMenuFrame inherits MenuFrameBase {
-	background: #FAFAFA;
-	border-radius: 3px;
-	border-width: 1px;
-	border-color: #00000026;
-	drop-shadow-color: #00000020;
-	drop-shadow-offset-y: 4px;
-	drop-shadow-blur: 8px;
-	margin: 3px;
-	layout-min-width: 160px;
+/// ドロップダウン項目 1 行分のデータ。`entry` が項目本体 (有効状態を含む
+/// 唯一の情報源)、残りは見た目の調整。行番号はモデルの index。
+export struct MenuItemView {
+	entry: MenuEntry,
+	// Windows 風アクセスキー "(X)" の文字 (省略可)。
+	access-key: string,
+	// タイトル末尾の "..." を括弧閉じの後ろへ回す。
+	ellipsis: bool,
+	// 右側に表示するショートカット表記 (例 "Ctrl+Z", 省略時は entry.shortcut)。
+	shortcut-text: string,
 }
 
 /// A single dropdown entry. `is-current` is driven by the parent (from the
@@ -139,5 +139,47 @@ export component FluentMenuItem {
 
 			activate(e, y) => { root.activated(); }
 		}
+	}
+}
+
+/// ドロップダウン。項目リスト (`items`) を描画する。行番号はモデルの index で、
+/// 無効行 / 区切り行を含む。現在ハイライト中の行は `current-row`。
+///
+/// - 無効行 / 区切り行はクリックを吸収するだけで反応しない
+///   (ポップアップも閉じない)
+/// - マウス hover は有効行のみハイライトする
+/// - 有効行が選択されると `activated(row)` を発火する
+///
+/// キーボードの上下移動 (無効行のスキップ) は呼び出し側が `items` モデルを
+/// 読んで `current-row` を更新する (有効状態の真実はこのモデル)。
+export component FluentMenuFrame inherits MenuFrameBase {
+	background: #FAFAFA;
+	border-radius: 3px;
+	border-width: 1px;
+	border-color: #00000026;
+	drop-shadow-color: #00000020;
+	drop-shadow-offset-y: 4px;
+	drop-shadow-blur: 8px;
+	margin: 3px;
+	layout-min-width: 160px;
+
+	in property <[MenuItemView]> items;
+	// 現在ハイライト中の行 (呼び出し側のキー操作と共有するため in-out)。
+	in-out property <int> current-row: -1;
+	// 項目の下線文字 (Alt 押下中表示)。全項目共通。
+	in property <bool> access-key-underline: false;
+	// 有効行が選択された (row はモデル index)。
+	callback activated(int);
+
+	for it[i] in root.items : FluentMenuItem {
+		entry: it.entry;
+		access-key: it.access-key;
+		access-key-underline: root.access-key-underline;
+		ellipsis: it.ellipsis;
+		shortcut-text: it.shortcut-text;
+		is-current: root.current-row == i;
+		set-current => { root.current-row = i; }
+		clear-current => { root.current-row = -1; }
+		activated => { root.activated(i); }
 	}
 }

@@ -183,6 +183,15 @@ export component MenuFrameBase inherits Rectangle {
 	out property <length> content-width: layout.preferred-width;
 	out property <length> content-height: layout.preferred-height;
 
+	// ポップアップの余白 (margin/padding) や区切り行のクリックをここで吸収
+	// する。吸収しないと下の「どこかをクリックしたら閉じる」背景に届き、
+	// 項目以外を押しただけでポップアップが閉じてしまう。レイアウト (項目)
+	// より先に宣言するため項目のクリックは各 TouchArea が受け取る。
+	TouchArea {
+		width: 100%;
+		height: 100%;
+	}
+
 	layout := VerticalLayout {
 		padding: root.margin;
 		@children
@@ -227,10 +236,12 @@ export component MenuItemBase {
 	background-layer := Rectangle {
 		background: root.default-background;
 
+		// TouchArea は無効項目 / 区切りでも常に有効。押された入力をここで
+		// 吸収しないと下のレイヤ (「どこかをクリックしたら閉じる」背景) に
+		// 到達してポップアップが閉じてしまい、押されたと勘違いされる。
+		// 吸収はするが反応はしない (ハイライト / 押下表示 / activate は
+		// enabled かつ区切りでない場合のみ)。
 		touch-area := TouchArea {
-			visible: !entry.is-separator;
-			enabled: entry.enabled;
-
 			layout := HorizontalLayout {
 				padding-top: root.vertical-padding;
 				padding-bottom: root.vertical-padding;
@@ -283,7 +294,7 @@ export component MenuItemBase {
 			}
 
 			pointer-event(event) => {
-				if event.kind == PointerEventKind.move && !root.is-current {
+				if event.kind == PointerEventKind.move && entry.enabled && !entry.is-separator && !root.is-current {
 					root.set-current()
 				} else if event.kind == PointerEventKind.down && entry.has-sub-menu && entry.enabled {
 					activate(entry, self.absolute-position.y);
@@ -294,7 +305,7 @@ export component MenuItemBase {
 						&& (root.had-press || animation-tick() - root.open-time > 300ms)
 						&& self.mouse-y > 0 && self.mouse-y < self.height
 						&& self.mouse-x > 0 && self.mouse-x < self.width
-						&& entry.enabled {
+						&& entry.enabled && !entry.is-separator {
 					// can't put this in `clicked` because then the menu would close causing a panic in the pointer-event
 					activate(entry, self.absolute-position.y);
 				}
@@ -318,6 +329,9 @@ export component MenuItemBase {
 			background-layer.background: root.current-background;
 			label.color: root.current-foreground;
 		}
+		// 無効項目 / 区切りは hover でも set-current されないため
+		// ハイライトが付かない (押されたと勘違いさせない)。クリックは
+		// TouchArea が吸収し、ポップアップも閉じない。
 		disabled when !entry.enabled : {
 			label.opacity: 0.5;
 		}
