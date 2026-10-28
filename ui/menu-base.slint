@@ -21,7 +21,7 @@ export global MenuAccessKey {
 }
 
 // ラベルのアクセスキー押下を伝えるハブ。アプリのキー処理から press を呼ぶと、
-// 一致するアクセスキーを持つ Label が反応してフォーカスを動かす。
+// 一致するアクセスキーを持つ Label が反応して activate を進める。
 export global AccessKeyHub {
 	in-out property <string> pressed: "";
 	public function press(key: string) {
