@@ -41,12 +41,11 @@ export component AccessKeyLabel inherits HorizontalLayout {
 
 	property <AccessKeyParts> parts: MenuAccessKey.parse(root.text);
 
-	// 親レイアウトの中で縦方向は中央に置く (伸びない子は上寄りになるため)。
-	// 横方向は呼び出し側の horizontal-stretch に従う。
-	cross-axis-self-alignment: center;
-
 	Rectangle {
 		// 表示 Text に固定サイズで張り付く (旧実装と同じジオメトリ)。
+		// 親レイアウト (行) の高さに合わせて伸び、箱の中央にテキストを
+		// 置くことで、行の他のコントロール (SpinBox 等) と上下を揃える。
+		cross-axis-self-alignment: center;
 		width: display.preferred-width;
 		height: display.preferred-height;
 
