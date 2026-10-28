@@ -41,16 +41,18 @@ export component AccessKeyLabel inherits HorizontalLayout {
 
 	property <AccessKeyParts> parts: MenuAccessKey.parse(root.text);
 
+	// 外側のレイアウトに伸縮させない (伸びると文字と下線の位置がずれる)。
+	vertical-stretch: 0;
+
 	Rectangle {
-		min-width: display.preferred-width;
-		min-height: display.preferred-height;
+		// 表示 Text に固定サイズで張り付く (旧実装と同じジオメトリ)。
+		width: display.preferred-width;
+		height: display.preferred-height;
 
 		// 文字は 1 つの Text で描く (分割すると CJK と Latin の行送りがずれ、
 		// 文字位置が変わってしまうため)。下線はその上に重ねる。
 		// parse が未接続で空のときは marker を解釈せず生のタイトルを出す。
 		display := Text {
-			width: 100%;
-			height: 100%;
 			text: plain-text == "" ? root.text : plain-text;
 			color: root.color;
 			font-size: root.font-size;
@@ -62,7 +64,7 @@ export component AccessKeyLabel inherits HorizontalLayout {
 		// (preferred-height は行間を含み下がり過ぎるため)。
 		if parts.key != "" && root.underline : Rectangle {
 			x: prefix-metrics.preferred-width;
-			y: (parent.height - (display.font-metrics.ascent + display.font-metrics.descent)) / 2 + display.font-metrics.ascent + 1px;
+			y: display.font-metrics.ascent + 1px;
 			width: key-metrics.preferred-width;
 			height: 1px;
 			background: root.color;
