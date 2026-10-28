@@ -47,12 +47,6 @@ export component SpinBoxBase {
 		}
 	}
 
-	// 数値入力欄にキーボードフォーカスを移す (ラベルのアクセスキーからの
-	// フォーカス移動先として使う)。
-	public function take-focus() {
-		text-input.focus();
-	}
-
 	private property <length> scroll-delta: 2px;
 
 	forward-focus: text-input;
@@ -157,12 +151,6 @@ export component SpinBox {
 	in-out property <int> value <=> base.value;
 
 	callback edited <=> base.edited;
-
-	// ラベルの activate (アクセスキー押下カウンタ) を受け取り、押されるたび
-	// に数値入力欄へフォーカスする:
-	//   focus-request: pen-width-label.activate;
-	in property <int> focus-request: 0;
-	changed focus-request => { base.take-focus(); }
 
 	// 128px -> 繧ｵ繧､繝峨ヰ繝ｼ逕ｨ縺ｫ邵ｮ蟆・(遏｢蜊ｰ繝懊ち繝ｳ繝ｻ菴咏區繧ゆｻ･荳九〒邵ｮ蟆・縲・
 	min-width: max(64px, layout.min-width);

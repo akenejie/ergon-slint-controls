@@ -6,36 +6,35 @@
 // タイトル中の "&X" はアクセスキー (常に下線を表示) として、"&&" はリテラルの
 // & として描画する。アクセスキーはタイトルにのみ書く (別プロパティは無い)。
 //
-// アクセスキーが押されたらフォーカスしてほしいコントロールは、ラベルの
-// activate (押下のたびに +1 されるカウンタ) をコントロールの focus-request へ
-// バインドする:
+// アクセスキーが押されると activated を発火する。任意のコードは呼び出し側で:
 //
 // ```slint
-// pen-width-label := Label { text: "線の太さ (&G)"; }
-// pen-spin := SpinBox { focus-request: pen-width-label.activate; }
+// pen-width-label := Label {
+//     text: "線の太さ (&G)";
+//     activated => { /* アクセスキーが押されたときの処理 */ }
+// }
 // ```
 //
 // アプリのキー処理は `AccessKeyHub.press(文字)` を呼ぶだけでよく、一致する
-// アクセスキーを持つ Label が activate を進める。
+// アクセスキーを持つ Label が activated を発火する。
 
 import { AccessKeyHub, AccessKeyLabel, MenuAccessKey } from "menu-base.slint";
 
 export component Label inherits AccessKeyLabel {
-	// アクセスキーが押されるたびに +1 される (コントロールの focus-request へ
-	// バインドして使う)。
-	out property <int> activate: 0;
+	// アクセスキーが押された。
+	callback activated();
 
 	underline: true;
 	color: #000000E6;
 	font-size: 1rem;
 
-	// アクセスキーが押されたら activate を進め、ハブをクリアする (次の押下で
+	// アクセスキーが押されたら activated を発火し、ハブをクリアする (次の押下で
 	// 変化が検知できるように)。
 	property <bool> hit: root.text != "" && AccessKeyHub.pressed != ""
 		&& AccessKeyHub.pressed.to-uppercase() == MenuAccessKey.parse(root.text).key.to-uppercase();
 	changed hit => {
 		if (self.hit) {
-			self.activate += 1;
+			root.activated();
 			AccessKeyHub.pressed = "";
 		}
 	}
