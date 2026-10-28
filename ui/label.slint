@@ -7,13 +7,12 @@
 // & として描画する。アクセスキーはタイトルにのみ書く (別プロパティは無い)。
 //
 // アクセスキーが押されたらフォーカスしてほしいコントロールは、ラベルの
-// activate (押下のたびに +1 されるカウンタ) をコントロール側で受け取る:
+// activate (押下のたびに +1 されるカウンタ) をコントロールの focus-request へ
+// バインドする:
 //
 // ```slint
 // pen-width-label := Label { text: "線の太さ (&G)"; }
-// pen-spin := SpinBox {
-//     focus-request: pen-width-label.activate;
-// }
+// pen-spin := SpinBox { focus-request: pen-width-label.activate; }
 // ```
 //
 // アプリのキー処理は `AccessKeyHub.press(文字)` を呼ぶだけでよく、一致する
@@ -21,25 +20,14 @@
 
 import { AccessKeyHub, AccessKeyLabel, MenuAccessKey } from "menu-base.slint";
 
-export component Label inherits FocusScope {
-	in property <string> text;
-	in property <brush> color: #000000E6;
-	in property <length> font-size: 1rem;
+export component Label inherits AccessKeyLabel {
 	// アクセスキーが押されるたびに +1 される (コントロールの focus-request へ
 	// バインドして使う)。
 	out property <int> activate: 0;
 
-	min-width: i-label.min-width;
-	min-height: i-label.preferred-height;
-
-	// 常時下線 (メニューバーではないため Alt で切り替えない)。
-	i-label := AccessKeyLabel {
-		y: (parent.height - self.height) / 2;
-		text: root.text;
-		underline: true;
-		color: root.color;
-		font-size: root.font-size;
-	}
+	underline: true;
+	color: #000000E6;
+	font-size: 1rem;
 
 	// アクセスキーが押されたら activate を進め、ハブをクリアする (次の押下で
 	// 変化が検知できるように)。
