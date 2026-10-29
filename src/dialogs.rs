@@ -372,7 +372,6 @@ pub fn show_message_box(title: &str, text: &str, kind: MessageIcon) {
 		);
 		dlg.set_title(title);
 		crate::gtk::run_dialog_blocking(&dlg);
-		dlg.close();
 		return;
 	}
 	// フォールバック: 別プロセスの zenity/kdialog/xmessage (fire-and-forget)。
@@ -540,7 +539,6 @@ pub fn message_box(title: &str, text: &str, buttons: MessageButtons) -> Option<M
 			MessageButtons::YesNo | MessageButtons::YesNoCancel => gtk::ResponseType::Yes,
 		});
 		let ret = crate::gtk::run_dialog_blocking(&dlg);
-		dlg.close();
 		return match ret {
 			gtk::ResponseType::Ok => Some(MessageResponse::Ok),
 			gtk::ResponseType::Yes => Some(MessageResponse::Yes),
@@ -781,7 +779,6 @@ pub fn message_box_custom(
 			);
 			dlg.set_default_response(default_resp);
 			let ret = crate::gtk::run_dialog_blocking(&dlg);
-			dlg.close();
 			return match ret {
 				gtk::ResponseType::Other(n) if n >= 100 && ((n - 100) as usize) < choices.len() => {
 					Some((n - 100) as usize)
@@ -983,7 +980,6 @@ pub fn prompt_folder(title: &str, initial: Option<&Path>) -> Option<PathBuf> {
 		} else {
 			None
 		};
-		dlg.close();
 		return picked;
 	}
 	dropping_stale_input(|| {

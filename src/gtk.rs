@@ -248,7 +248,14 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 	// close() は隠すだけで GtkWindow/X ウィンドウが生き残り、X の入力
 	// フォーカスが隠れた窓に残ってキーボード入力が死ぬため、必ず破棄する。
 	unsafe { dlg.destroy() };
-	eprintln!("[gtk-dbg] destroy done");
+
+	// ここから先はメインループが GDK を回さない。モーダルグラブの解除や
+	// ウィンドウ破棄の要求が GDK 側の X 出力バッファに残ったままだと X サー
+	// バーに届かず、グラブが解放されないままキーボード入力が死ぬため、明示
+	// 的にフラッシュする。
+	if let Some(disp) = gtk::gdk::Display::default() {
+		disp.flush();
+	}
 
 	// 破棄後、X の入力フォーカスを親窓へ戻す。WM がフォーカスを復帰させな
 	// い環境では、キーボード入力がアプリへ届かなくなり、閉じた直後からフリー
