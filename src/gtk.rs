@@ -227,12 +227,10 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 
 	// 再帰メインループを実行して応答を待つ。
 	let ret = dlg.run();
-	eprintln!("[gtk-dbg] run returned: {ret:?}");
 
 	// 後始末 (順序重要): グラブ解除 → PING 復帰 (flush)。
 	if let Some(seat) = seat {
 		seat.ungrab();
-		eprintln!("[gtk-dbg] ungrab done");
 	}
 	if let Some(c) = conn.as_ref() {
 		if let Some((win, prop, orig)) = ping_restore {
