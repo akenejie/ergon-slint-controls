@@ -1,13 +1,14 @@
 // SpinBox
-// slint 讓呎ｺ・(fluent) 縺ｮ spinbox.slint + common/spinbox-base.slint 繧偵い繝励Μ
-// 蜀・↓遘ｻ讀阪＠縺溘ｂ縺ｮ (SmallButton / ModeToggleButton 縺ｨ蜷後§譁ｹ蠑・縲・luentPalette
-// / Icons 縺ｮ萓晏ｭ倥ｒ螟悶☆縺溘ａ縲√Λ繧､繝磯・濶ｲ縺ｮ蛟､縺ｨ chevron 繧｢繧､繧ｳ繝ｳ (ui/ 驟堺ｸ九・
-// _chevron-*.svg) 繧偵Ο繝ｼ繧ｫ繝ｫ蜿ら・縺ｫ鄂ｮ縺肴鋤縺医※縺・ｋ縲・
+// slint 標準 (fluent) の spinbox.slint + common/spinbox-base.slint をアプリ
+// 内に移植したもの (SmallButton / ModeToggleButton と同じ方式)。FluentPalette
+// / Icons の依存を外すため、ライト配色の値と chevron アイコン (ui/ 配下の
+// _chevron-*.svg) をローカル参照に置き換えている。
 //
-// 讓呎ｺ悶°繧峨・螟画峩轤ｹ: min-width 繧・128px 縺九ｉ邵ｮ蟆上＠ (140px 蟷・・繧ｵ繧､繝峨ヰ繝ｼ縺ｸ
-// 蜿弱ａ繧・縲∫泙蜊ｰ繝懊ち繝ｳ縺ｨ菴咏區繧らｸｮ繧√◆縲らｸｦ繧よｽｰ縺励※ (min-height 20px繝ｻ譁・ｭ・
-// 11px) 繧ｵ繧､繝峨ヰ繝ｼ縺ｮ縺ｻ縺九・陦後→蜷後§縺上ｉ縺・・鬮倥＆縺ｫ縺励◆縲・
-// 繝ｩ繧､繝悶Λ繝ｪ蛛ｴ (i-slint-compiler/widgets/fluent/*) 縺ｯ螟画峩縺励↑縺・・
+// 標準からの変更点: min-width を 128px から縮小し (140px 幅のサイドバーへ
+// 収める)、矢印ボタンと余白も縮めた。縦も潰して (min-height 20px・文字
+// 11px) サイドバーのほかの行と同じくらいの高さにした。
+// 上下ボタンは右側に縦並び (上=increment / 下=decrement)。
+// ライブラリ側 (i-slint-compiler/widgets/fluent/*) は変更しない。
 
 
 import { AppTooltip } from "project-tooltip.slint";
@@ -108,6 +109,9 @@ export component SpinBoxButton {
 	callback clicked <=> touch-area.clicked;
 
 	in property <image> icon <=> icon.source;
+	// アイコンの描画サイズ (縦並びの小型ボタンで圧縮表示するために調整可)。
+	in property <length> icon-width: 12px;
+	in property <length> icon-height: 12px;
 
 	min-width: 20px;
 	horizontal-stretch: 0;
@@ -124,10 +128,10 @@ export component SpinBoxButton {
 		icon := Image {
 			image-fit: contain;
 			colorize: #00000099;
-			width: 12px;
-			// height 繧呈・遉ｺ縺励↑縺・→ SVG 縺ｮ螳溷ｯｸ蝓ｺ貅悶〒邂怜・縺輔ｌ縲｜utton 縺・
-			// 蠢・ｦ∽ｻ･荳翫↓邵ｦ縺ｫ閹ｨ蠑ｵ縺吶ｋ (螳滓ｸｬ ~66px)縲・2px 縺ｫ蝗ｺ螳壹☆繧九・
-			height: 12px;
+			width: root.icon-width;
+			// height を明示しないと SVG の実寸基準で算出され、button が
+			// 必要以上に縦に膨張する (実測 ~66px)。icon-height で固定する。
+			height: root.icon-height;
 			accessible-role: none;
 
 			animate colorize { duration: 150ms; }
@@ -145,14 +149,14 @@ export component SpinBox {
 	in property <int> step-size <=> base.step-size;
 	in property <bool> read-only <=> base.read-only;
 	in property <TextHorizontalAlignment> horizontal-alignment <=> base.horizontal-alignment;
-	// 繝槭え繧ｹ繧帝㍾縺ｭ繧九→蜃ｺ繧玖ｪｬ譏弱らｩｺ縺ｪ繧峨ヤ繝ｼ繝ｫ繝√ャ繝励ｒ蜃ｺ縺輔↑縺・・
+	// マウスを重ねると出る説明。空ならツールチップを出さない。
 	in property <string> tooltip-text;
 	out property <bool> has-focus <=> base.has-focus;
 	in-out property <int> value <=> base.value;
 
 	callback edited <=> base.edited;
 
-	// 128px -> 繧ｵ繧､繝峨ヰ繝ｼ逕ｨ縺ｫ邵ｮ蟆・(遏｢蜊ｰ繝懊ち繝ｳ繝ｻ菴咏區繧ゆｻ･荳九〒邵ｮ蟆・縲・
+	// 128px -> サイドバー用に縮小 (矢印ボタン・余白も以下で縮小)。
 	min-width: max(64px, layout.min-width);
 	min-height: max(20px, layout.min-height);
 	vertical-stretch: 0;
@@ -202,7 +206,7 @@ export component SpinBox {
 
 				base := SpinBoxBase {
 					width: 100%;
-					// 繧ｵ繧､繝峨ヰ繝ｼ逕ｨ縺ｫ譁・ｭ励ｒ 11px 縺ｫ縺励※邵ｦ繧定ｩｰ繧√ｋ縲・
+					// サイドバー用に文字を 11px にして縦を詰める。
 					font-size: 1rem;
 					color: #000000E6;
 					selection-background-color: #0078D4;
@@ -210,21 +214,31 @@ export component SpinBox {
 				}
 			}
 
-			SpinBoxButton {
-				visible: root.enabled && !root.read-only;
-				icon: @image-url("_chevron-up.svg");
+			// 上下ボタン: 右端に縦並び (上=increment / 下=decrement)。
+			// 高さは半分ずつなので、アイコンを少し上下に圧縮して収める。
+			VerticalLayout {
+				spacing: 0px;
 
-				clicked => {
-					base.increment();
+				SpinBoxButton {
+					visible: root.enabled && !root.read-only;
+					icon: @image-url("_chevron-up.svg");
+					icon-width: 8px;
+					icon-height: 6px;
+
+					clicked => {
+						base.increment();
+					}
 				}
-			}
 
-			SpinBoxButton {
-				visible: root.enabled && !root.read-only;
-				icon: @image-url("_chevron-down.svg");
+				SpinBoxButton {
+					visible: root.enabled && !root.read-only;
+					icon: @image-url("_chevron-down.svg");
+					icon-width: 8px;
+					icon-height: 6px;
 
-				clicked => {
-					base.decrement();
+					clicked => {
+						base.decrement();
+					}
 				}
 			}
 		}
@@ -243,4 +257,3 @@ export component SpinBox {
 		}
 	}
 }
-
