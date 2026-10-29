@@ -46,12 +46,16 @@ pub fn gtk_ready() -> bool {
 }
 
 /// ダイアログ表示中だけ有効な後始末。Drop で GDK のシートグラブを外し、
-/// WM_PROTOCOLS から外した `_NET_WM_PING` を元に戻す (変更は flush する)。
+/// WM_PROTOCOLS から外した `_NET_WM_PING` を元に戻し、入力遮断カウンタを
+/// 減らす (変更は flush する)。
 struct DialogGuard {
 	seat: Option<gtk::gdk::Seat>,
 	conn: Option<x11rb::rust_connection::RustConnection>,
 	// (親窓 id, WM_PROTOCOLS アトム, 元の値)
 	ping_restore: Option<(u32, u32, Vec<u32>)>,
+	// dialogs::dialog_push 済み (Wayland 等で X11 のグラブを使わないときに
+	// 親の入力遮断を担う)。Drop で dialog_pop する。
+	input_block: bool,
 }
 
 impl Drop for DialogGuard {
@@ -69,6 +73,9 @@ impl Drop for DialogGuard {
 					.map(|c| c.ignore_error());
 			}
 			let _ = conn.flush();
+		}
+		if self.input_block {
+			crate::dialogs::dialog_pop();
 		}
 	}
 }
@@ -215,35 +222,84 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 
 	// X11 が使えるとき: show (マップ) より前に親を transient にして、WM に
 	// 親基準で配置させる。親窓 id は後の _NET_WM_PING 抑制にも使う。
+	// (デバッグ用: NO_TRANSIENT=1 / NO_PING=1 / NO_GRAB=1 で各仕掛けを
+	// 無効化して切り分けられる。通常はすべて有効。)
+	let transient_off = std::env::var("NO_TRANSIENT").is_ok();
+	let ping_off = std::env::var("NO_PING").is_ok();
+	let grab_off = std::env::var("NO_GRAB").is_ok();
 	let conn = x11rb::connect(None).ok().map(|(c, _)| c);
 	let parent = conn.as_ref().and_then(pick_parent_window);
-	if let (Some(c), Some(p)) = (conn.as_ref(), parent) {
-		// GTK は realize 時にトップレベルの他に補助窓も作るため、新しく生えた
-		// X 窓すべてに transient を付ける (WM が管理するのはその中の 1 つ)。
-		for x in realize_dialog_xids(dlg, c) {
-			set_transient_for(c, x, p);
+	if !transient_off {
+		if let (Some(c), Some(p)) = (conn.as_ref(), parent) {
+			// GTK は realize 時にトップレベルの他に補助窓も作るため、新しく生えた
+			// X 窓すべてに transient を付ける (WM が管理するのはその中の 1 つ)。
+			for x in realize_dialog_xids(dlg, c) {
+				set_transient_for(c, x, p);
+			}
 		}
 	}
 	let conn = conn.filter(|_| parent.is_some());
 
 	dlg.show();
 	wait_viewable(dlg.upcast_ref(), 1500);
-	let ping_restore = match (conn.as_ref(), parent) {
-		(Some(c), Some(p)) => {
-			let r = suppress_ping(c, p);
-			// x11rb は変更をクライアント側にバッファするため、ここで必ず
-			// サーバーへ送っておかないと WM が _NET_WM_PING を送り続けて
-			// 親が「応答なし」扱いになる。
-			let _ = c.flush();
-			r
+	// TEMP DEBUG: OK ボタンの絶対座標と response の発火を確認する (フリーズ調査用)。
+	{
+		use gtk::prelude::*;
+		fn find_button(w: &gtk::Widget) -> Option<gtk::Button> {
+			if let Some(b) = w.downcast_ref::<gtk::Button>() {
+				return Some(b.clone());
+			}
+			if let Some(c) = w.dynamic_cast_ref::<gtk::Container>() {
+				for ch in c.children() {
+					if let Some(b) = find_button(&ch) {
+						return Some(b);
+					}
+				}
+			}
+			None
 		}
-		_ => None,
+		let btn = find_button(dlg.upcast_ref());
+		if let Some(btn) = btn {
+			let d2 = dlg.clone();
+			gtk::glib::timeout_add_local(std::time::Duration::from_millis(300), move || {
+				let alloc = btn.allocation();
+				if let Some(win) = btn.window() {
+					let (wx, wy) = win.position();
+					eprintln!(
+						"[gtk-dbg] OK-POS x={} y={} (w={} h={})",
+						wx + alloc.x(),
+						wy + alloc.y(),
+						alloc.width(),
+						alloc.height()
+					);
+				}
+				true.into()
+			});
+		}
+		dlg.connect_response(move |_, r| {
+			eprintln!("[gtk-dbg] response fired: {r:?}");
+		});
+	}
+	let ping_restore = if ping_off {
+		None
+	} else {
+		match (conn.as_ref(), parent) {
+			(Some(c), Some(p)) => {
+				let r = suppress_ping(c, p);
+				// x11rb は変更をクライアント側にバッファするため、ここで必ず
+				// サーバーへ送っておかないと WM が _NET_WM_PING を送り続けて
+				// 親が「応答なし」扱いになる。
+				let _ = c.flush();
+				r
+			}
+			_ => None,
+		}
 	};
 
-	let seat = grab_seat(dlg);
+	let seat = if grab_off { None } else { grab_seat(dlg) };
 
 	// run() の間、シートグラブ・PING 抑制を維持する。
-	let _guard = DialogGuard { seat, conn, ping_restore };
+	let _guard = DialogGuard { seat, conn, ping_restore, input_block: false };
 	dlg.run()
 }
 
