@@ -1,6 +1,6 @@
 [package]
 name = "ergon-slint-controls"
-version = "0.3.35"
+version = "0.3.36"
 edition = "2021"
 links = "ergon-slint-controls"
 
@@ -35,9 +35,6 @@ windows-sys = { version = "0.61", features = [
 # xlib_window を公開しないため、自プロセスのトップレベルウィンドウを x11rb 接続
 # から探して change_window_attributes で差し替える。
 x11rb = { version = "0.13", features = ["render", "image"] }
-# GDK のバックエンド判定 (X11Display へのダウンキャスト): Wayland セッションで
-# X11 専用の仕掛け (transient / PING 抑制 / シートグラブ) を適用しないために使う。
-gdkx11 = "0.18"
 # gtk モジュール: 同一プロセス内の GTK 標準ダイアログ (MessageDialog /
 # FileChooserDialog) をモーダルにブロック実行する。ビルドには libgtk-3-dev
 # (pkg-config の `gtk+-3.0`) が必要。

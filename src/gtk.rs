@@ -45,41 +45,6 @@ pub fn gtk_ready() -> bool {
 	}
 }
 
-/// ダイアログ表示中だけ有効な後始末。Drop で GDK のシートグラブを外し、
-/// WM_PROTOCOLS から外した `_NET_WM_PING` を元に戻し、入力遮断カウンタを
-/// 減らす (変更は flush する)。
-struct DialogGuard {
-	seat: Option<gtk::gdk::Seat>,
-	conn: Option<x11rb::rust_connection::RustConnection>,
-	// (親窓 id, WM_PROTOCOLS アトム, 元の値)
-	ping_restore: Option<(u32, u32, Vec<u32>)>,
-	// dialogs::dialog_push 済み (Wayland 等で X11 のグラブを使わないときに
-	// 親の入力遮断を担う)。Drop で dialog_pop する。
-	input_block: bool,
-}
-
-impl Drop for DialogGuard {
-	fn drop(&mut self) {
-		if let Some(seat) = self.seat.take() {
-			seat.ungrab();
-		}
-		if let Some(conn) = self.conn.as_ref() {
-			use x11rb::connection::Connection;
-			use x11rb::protocol::xproto::{AtomEnum, PropMode};
-			use x11rb::wrapper::ConnectionExt as _;
-			if let Some((win, property, orig)) = self.ping_restore.take() {
-				let _ = conn
-					.change_property32(PropMode::REPLACE, win, property, AtomEnum::ATOM, &orig)
-					.map(|c| c.ignore_error());
-			}
-			let _ = conn.flush();
-		}
-		if self.input_block {
-			crate::dialogs::dialog_pop();
-		}
-	}
-}
-
 fn intern(conn: &x11rb::rust_connection::RustConnection, name: &[u8]) -> Option<u32> {
 	use x11rb::protocol::xproto::ConnectionExt;
 	conn.intern_atom(false, name).ok()?.reply().ok().map(|r| r.atom)
@@ -260,7 +225,6 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 		}
 		let btn = find_button(dlg.upcast_ref());
 		if let Some(btn) = btn {
-			let d2 = dlg.clone();
 			gtk::glib::timeout_add_local(std::time::Duration::from_millis(300), move || {
 				let alloc = btn.allocation();
 				if let Some(win) = btn.window() {
@@ -298,9 +262,37 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 
 	let seat = if grab_off { None } else { grab_seat(dlg) };
 
-	// run() の間、シートグラブ・PING 抑制を維持する。
-	let _guard = DialogGuard { seat, conn, ping_restore, input_block: false };
-	dlg.run()
+	// 再帰メインループを実行して応答を待つ。
+	let ret = dlg.run();
+
+	// 後始末 (順序重要): グラブ解除 → PING 復帰 (flush)。
+	if let Some(seat) = seat {
+		seat.ungrab();
+	}
+	if let Some(c) = conn.as_ref() {
+		if let Some((win, prop, orig)) = ping_restore {
+			use x11rb::protocol::xproto::{AtomEnum, PropMode};
+			use x11rb::wrapper::ConnectionExt as _;
+			let _ = c
+				.change_property32(PropMode::REPLACE, win, prop, AtomEnum::ATOM, &orig)
+				.map(|c| c.ignore_error());
+		}
+		let _ = c.flush();
+	}
+
+	dlg.close();
+
+	// ダイアログを閉じた後、X の入力フォーカスを親窓へ戻す。
+	// WM がフォーカスを復帰させない環境では、キーボード入力がアプリへ届か
+	// なくなり、閉じた直後からフリーズしたように見える。
+	if let (Some(c), Some(p)) = (conn.as_ref(), parent) {
+		use x11rb::protocol::xproto::{ConnectionExt as _, InputFocus};
+		let _ = c
+			.set_input_focus(InputFocus::PARENT, p, 0u32)
+			.map(|c| c.ignore_error());
+		let _ = c.flush();
+	}
+	ret
 }
 
 /// ダイアログにボタンを追加する。`key` は Alt+キーのアクセラレータ (単一
