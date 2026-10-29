@@ -15,9 +15,9 @@ import { AccessKeyLabel } from "menu-base.slint";
 
 export component SmallButton inherits Rectangle {
 	in property <string> text;
-	// タイトル中の "&X" をアクセスキーとして描画し、access-key-underline が
-	// true の間だけその文字に下線を引く (メニューと同じ記法)。
-	in property <bool> access-key-underline: false;
+	// タイトル中の "&X" をアクセスキーとして描画し、その文字に下線を引く
+	// (トグルボタンと同じく常時表示。& が無いテキストには下線は出ない)。
+	in property <bool> access-key-underline: true;
 	// マウスを重ねると出る説明。空ならツールチップを出さない。
 	in property <string> tooltip-text;
 	in property <image> icon;
