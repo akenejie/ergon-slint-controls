@@ -207,43 +207,6 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 
 	dlg.show();
 	wait_viewable(dlg.upcast_ref(), 1500);
-	// TEMP DEBUG: OK ボタンの絶対座標と response の発火を確認する (フリーズ調査用)。
-	{
-		use gtk::prelude::*;
-		fn find_button(w: &gtk::Widget) -> Option<gtk::Button> {
-			if let Some(b) = w.downcast_ref::<gtk::Button>() {
-				return Some(b.clone());
-			}
-			if let Some(c) = w.dynamic_cast_ref::<gtk::Container>() {
-				for ch in c.children() {
-					if let Some(b) = find_button(&ch) {
-						return Some(b);
-					}
-				}
-			}
-			None
-		}
-		let btn = find_button(dlg.upcast_ref());
-		if let Some(btn) = btn {
-			gtk::glib::timeout_add_local(std::time::Duration::from_millis(300), move || {
-				let alloc = btn.allocation();
-				if let Some(win) = btn.window() {
-					let (wx, wy) = win.position();
-					eprintln!(
-						"[gtk-dbg] OK-POS x={} y={} (w={} h={})",
-						wx + alloc.x(),
-						wy + alloc.y(),
-						alloc.width(),
-						alloc.height()
-					);
-				}
-				true.into()
-			});
-		}
-		dlg.connect_response(move |_, r| {
-			eprintln!("[gtk-dbg] response fired: {r:?}");
-		});
-	}
 	let ping_restore = if ping_off {
 		None
 	} else {
