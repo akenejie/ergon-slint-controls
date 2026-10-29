@@ -33,7 +33,7 @@ export component ModeToggleButton inherits Rectangle {
 	private property <brush> text-color: #000000E6;
 
 	min-width: max(32px, i-layout.min-width);
-	min-height: max(24px, i-layout.min-height);
+	min-height: max(22px, i-layout.min-height);
 	horizontal-stretch: 0;
 	vertical-stretch: 0;
 	forward-focus: i-focus-scope;
@@ -101,8 +101,8 @@ export component ModeToggleButton inherits Rectangle {
 			// 旧実装 (アクセスキー前) はテキスト箱を content 領域の上部に置いて
 			// いたのに対し、いまは Text を縦中央寄せで描くため、中央位置が
 			// (18-15)/2 ≈ 1.5px 下がる。このパディングの非対称で補正する。
-			padding-top: 2.5px;
-			padding-bottom: 3.5px;
+			padding-top: 1.5px;
+			padding-bottom: 2.5px;
 			spacing: 4px;
 			alignment: center;
 

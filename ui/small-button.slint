@@ -34,7 +34,7 @@ export component SmallButton inherits Rectangle {
 	private property <brush> text-color: root.primary ? #FFFFFF : #000000E6;
 
 	min-width: max(32px, i-layout.min-width);
-	min-height: max(24px, i-layout.min-height);
+	min-height: max(22px, i-layout.min-height);
 	horizontal-stretch: 0;
 	vertical-stretch: 0;
 	forward-focus: i-focus-scope;
@@ -75,8 +75,8 @@ export component SmallButton inherits Rectangle {
 		i-layout := HorizontalLayout {
 			padding-left: 12px;
 			padding-right: 12px;
-			padding-top: 3px;
-			padding-bottom: 3px;
+			padding-top: 2px;
+			padding-bottom: 2px;
 			spacing: 4px;
 			alignment: center;
 
