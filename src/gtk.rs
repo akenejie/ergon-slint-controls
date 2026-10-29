@@ -227,10 +227,12 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 
 	// 再帰メインループを実行して応答を待つ。
 	let ret = dlg.run();
+	eprintln!("[gtk-dbg] run returned: {ret:?}");
 
 	// 後始末 (順序重要): グラブ解除 → PING 復帰 (flush)。
 	if let Some(seat) = seat {
 		seat.ungrab();
+		eprintln!("[gtk-dbg] ungrab done");
 	}
 	if let Some(c) = conn.as_ref() {
 		if let Some((win, prop, orig)) = ping_restore {
@@ -246,6 +248,7 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 	// close() は隠すだけで GtkWindow/X ウィンドウが生き残り、X の入力
 	// フォーカスが隠れた窓に残ってキーボード入力が死ぬため、必ず破棄する。
 	unsafe { dlg.destroy() };
+	eprintln!("[gtk-dbg] destroy done");
 
 	// 破棄後、X の入力フォーカスを親窓へ戻す。WM がフォーカスを復帰させな
 	// い環境では、キーボード入力がアプリへ届かなくなり、閉じた直後からフリー
