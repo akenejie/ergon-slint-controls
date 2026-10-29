@@ -243,11 +243,13 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 		let _ = c.flush();
 	}
 
-	dlg.close();
+	// close() は隠すだけで GtkWindow/X ウィンドウが生き残り、X の入力
+	// フォーカスが隠れた窓に残ってキーボード入力が死ぬため、必ず破棄する。
+	dlg.destroy();
 
-	// ダイアログを閉じた後、X の入力フォーカスを親窓へ戻す。
-	// WM がフォーカスを復帰させない環境では、キーボード入力がアプリへ届か
-	// なくなり、閉じた直後からフリーズしたように見える。
+	// 破棄後、X の入力フォーカスを親窓へ戻す。WM がフォーカスを復帰させな
+	// い環境では、キーボード入力がアプリへ届かなくなり、閉じた直後からフリー
+	// ズしたように見える。
 	if let (Some(c), Some(p)) = (conn.as_ref(), parent) {
 		use x11rb::protocol::xproto::{ConnectionExt as _, InputFocus};
 		let _ = c
