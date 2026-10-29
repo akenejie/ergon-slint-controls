@@ -245,7 +245,7 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 
 	// close() は隠すだけで GtkWindow/X ウィンドウが生き残り、X の入力
 	// フォーカスが隠れた窓に残ってキーボード入力が死ぬため、必ず破棄する。
-	dlg.destroy();
+	unsafe { dlg.destroy() };
 
 	// 破棄後、X の入力フォーカスを親窓へ戻す。WM がフォーカスを復帰させな
 	// い環境では、キーボード入力がアプリへ届かなくなり、閉じた直後からフリー
