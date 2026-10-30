@@ -405,7 +405,17 @@ fn main() -> Result<(), slint::PlatformError> {
 		let start_stop = start_stop.clone();
 		ui.on_menu_item_clicked(move |id| {
 			let Some(ui) = weak.upgrade() else { return };
-			match id.as_str() {
+			// 処理は再描画の後へ (メニューを閉じた描画が先に行われる)。
+			// 呼び出しのたびに必要な状態を clone して遅延クロージャへ渡す。
+			let weak2 = weak.clone();
+			let save_dir = save_dir.clone();
+			let sessions = sessions.clone();
+			let start_stop = start_stop.clone();
+			let slot = slot.clone();
+			let do_export = do_export.clone();
+			ergon_slint_controls::menu::defer_action(&ui, move || {
+				let Some(ui) = weak2.upgrade() else { return };
+				match id.as_str() {
 				"--folder" => {
 					if let Some(dir) = ergon_slint_controls::dialogs::prompt_folder("ログの保存先フォルダ", None) {
 						*save_dir.borrow_mut() = Some(dir.clone());
@@ -457,7 +467,8 @@ fn main() -> Result<(), slint::PlatformError> {
 					ergon_slint_controls::dialogs::MessageIcon::Info,
 				),
 				_ => {}
-			}
+				}
+			});
 		});
 	}
 	{
