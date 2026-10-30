@@ -217,7 +217,8 @@ file-button := FluentMenuBarItem {
 // in-window オーバーレイのドロップダウンは、開いている間の外側クリックを
 // ライブラリが捕捉して閉じる (メニューバーより下だけ覆うので、バー項目の
 // hover / 開き替えは生きる。押した瞬間 = down で閉じ、全ボタン共通)。
-// active は既定で MenuOpenHub に追従するので、配置は 1 行:
+// active は既定で MenuOpenHub に追従する。**配置はドロップダウンより手前
+// (先に宣言)** — 後ろに置くとポップアップ項目の hover / クリックを塞ぐ:
 MenuDismissLayer { top: menu-bar.height; }
 ```
 
@@ -279,7 +280,7 @@ ui.global::<AccessKeyHub>().invoke_press(pressed.to_ascii_uppercase().to_string(
 
 | 関数 | シグネチャ | 挙動 |
 |---|---|---|
-| `show_message_box` | `(title, text, kind: MessageIcon)` | エラー / 情報。fire-and-forget。Windows = TaskDialog、Linux = 同一プロセス GTK (親をモーダルにブロック)、macOS = NSAlert。失敗時は zenity / kdialog / xmessage、最後は stderr |
+| `show_message_box` | `(title, text, kind: MessageIcon)` | エラー / 情報。fire-and-forget。Windows = TaskDialog、Linux = 同一プロセス GTK (親をモーダルにブロック)、macOS = NSAlert。失敗時は zenity / kdialog / xmessage、最後は stderr。**1 フレーム遅らせて表示する** (メニューを閉じた直後に呼んでも、閉じた描画が先に行われポップアップが残らない) |
 | `message_box` | `(title, text, buttons: MessageButtons) -> Option<MessageResponse>` | `Ok` / `OkCancel` / `YesNo` / `YesNoCancel`。キャンセル / Esc は `None` |
 | `message_box_custom` | `(title, text, choices: &[&str], default: Option<usize>) -> Option<usize>` | 選択 index。ラベル中の `(&X)` は各 OS のアクセスキー表記に変換 |
 | `prompt_folder` | `(title, initial: Option<&Path>) -> Option<PathBuf>` | フォルダ選択。Windows = IFileOpenDialog、macOS = NSOpenPanel |
