@@ -65,6 +65,28 @@ pub fn access_key_char(title: &str) -> Option<char> {
 	parse_access_key(title).key.chars().next()
 }
 
+/// 押されたキーの (第一) 文字を小文字で返す。**離し (Released) は無視する**
+/// (押下と離しの両方で発火しないよう、呼び出し側はこれ 1 本でよい)。
+/// Alt 押下中でも文字はそのまま来る (winit の logical_key)。
+///
+/// ```ignore
+/// // winit フックのキー処理:
+/// if let Some(pressed) = ergon_slint_controls::menu::pressed_char(key_event) {
+///     // pressed.to_ascii_uppercase() を access_key_char(タイトル) と比較
+/// }
+/// ```
+pub fn pressed_char(event: &slint::winit_030::winit::event::KeyEvent) -> Option<char> {
+	if event.state != slint::winit_030::winit::event::ElementState::Pressed {
+		return None;
+	}
+	match &event.logical_key {
+		slint::winit_030::winit::keyboard::Key::Character(c) => {
+			c.chars().next().map(|c| c.to_ascii_lowercase())
+		}
+		_ => None,
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

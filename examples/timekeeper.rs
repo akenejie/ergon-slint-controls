@@ -25,22 +25,13 @@
 // クレート内にあるため同じコンパイル単位で直接 import しているが、API の形は
 // 同じ (README の「参照方法の要点」を参照)。
 
-use ergon_slint_controls::menu::{access_key_char, parse_access_key};
-use ergon_slint_controls::{AccessKeyHub, MenuAccessKey, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
+use ergon_slint_controls::menu::{access_key_char, parse_access_key, pressed_char};
+use ergon_slint_controls::{AccessKeyHub, MenuAccessKey, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
 use modal_window::OverlayHost as _;
 use slint::{winit_030::{winit, EventResult, WinitWindowAccessor}, ComponentHandle as _, Model as _};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
-
-/// 押されたキーの (第一) 文字を小文字で返す。Alt 押下中でも文字はそのまま来る
-/// (winit の logical_key)。
-fn pressed_char(event: &winit::event::KeyEvent) -> Option<char> {
-	match &event.logical_key {
-		winit::keyboard::Key::Character(c) => c.chars().next().map(|c| c.to_ascii_lowercase()),
-		_ => None,
-	}
-}
 
 /// (メニュー index, 行 index) → コマンド。区切り行は None。
 /// .slint 側の file-actions / task-actions / help-actions と同じ表。
@@ -58,7 +49,7 @@ fn menu_action(menu: i32, row: usize) -> Option<String> {
 
 /// メニューコマンドの実行 (ポップアップを閉じてから処理する)。
 fn apply_menu_action(ui: &TimeKeeperWindow, action: &str) {
-	ui.set_open_menu(-1);
+	ui.global::<MenuOpenHub>().invoke_close();
 	ui.invoke_menu_item_clicked(action.into());
 }
 
@@ -560,9 +551,20 @@ fn main() -> Result<(), slint::PlatformError> {
 			}
 		}
 
+		// ウィンドウの外がクリックされた (非活性になった) ときもメニューを閉じる。
+		if let winit::event::WindowEvent::Focused(false) = event {
+			if let Some(ui) = weak.upgrade() {
+				ui.global::<MenuOpenHub>().invoke_close();
+			}
+		}
+
 		let winit::event::WindowEvent::KeyboardInput { event: key_event, .. } = event else {
 			return EventResult::Propagate;
 		};
+		// 離し (Released) は処理しない (押下だけで判定する)。
+		if key_event.state != winit::event::ElementState::Pressed {
+			return EventResult::Propagate;
+		}
 		let code = match key_event.physical_key {
 			winit::keyboard::PhysicalKey::Code(c) => c,
 			_ => return EventResult::Propagate,
@@ -575,7 +577,7 @@ fn main() -> Result<(), slint::PlatformError> {
 			return EventResult::PreventDefault;
 		}
 
-		let open = weak.upgrade().map(|ui| ui.get_open_menu()).unwrap_or(-1);
+		let open = weak.upgrade().map(|ui| ui.global::<MenuOpenHub>().get_open()).unwrap_or(-1);
 
 		// --- Alt+文字: バー項目のアクセスキーでメニューを開閉 ---
 		if !key_event.repeat && alt_state.load(Relaxed) {
@@ -591,10 +593,11 @@ fn main() -> Result<(), slint::PlatformError> {
 					.map(|(id, _)| id)
 				});
 				if let Some(want) = want {
-					if ui.get_open_menu() == want as i32 {
-						ui.set_open_menu(-1);
+					let hub = ui.global::<MenuOpenHub>();
+					if hub.get_open() == want as i32 {
+						hub.invoke_close();
 					} else {
-						ui.set_open_menu(want as i32);
+						hub.set_open(want as i32);
 						// キーボードで開いたときは最初の有効行を初期選択にする
 						// (区切り / 無効行は読み飛ばす。モデルが唯一の情報源)。
 						let items = match want {
@@ -660,7 +663,7 @@ fn main() -> Result<(), slint::PlatformError> {
 		if open >= 0 && matches!(code, KeyCode::ArrowLeft | KeyCode::ArrowRight) {
 			if let Some(ui) = weak.upgrade() {
 				let next = if matches!(code, KeyCode::ArrowRight) { (open + 1) % 3 } else { (open + 2) % 3 };
-				ui.set_open_menu(next);
+				ui.global::<MenuOpenHub>().set_open(next);
 				let items = match next {
 					1 => ui.get_task_items(),
 					2 => ui.get_help_items(),
@@ -683,7 +686,7 @@ fn main() -> Result<(), slint::PlatformError> {
 		}
 		if open >= 0 && matches!(code, KeyCode::Escape) {
 			if let Some(ui) = weak.upgrade() {
-				ui.set_open_menu(-1);
+				ui.global::<MenuOpenHub>().invoke_close();
 				ui.set_menu_index(-1);
 			}
 			return EventResult::PreventDefault;

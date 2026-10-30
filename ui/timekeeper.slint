@@ -7,7 +7,7 @@
 // クレート内のサンプルでは同じコンパイル単位にするため各 ui ファイルから
 // 直接 import している。API の形は同じ。
 
-import { MenuAccessKey, AccessKeyHub, AccessKeyLabel } from "menu-base.slint";
+import { MenuAccessKey, AccessKeyHub, MenuOpenHub, AccessKeyLabel } from "menu-base.slint";
 import { FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView, MenuHintPopup, MenuDismissLayer } from "menu.slint";
 import { Label } from "label.slint";
 import { SmallButton } from "small-button.slint";
@@ -35,7 +35,7 @@ export component TimeKeeperWindow inherits Window {
 	background: #f7f7f8;
 
 	// ---- メニューの状態 ----
-	in-out property <int> open-menu: -1;          // 開いているドロップダウン (0=ファイル, 1=タスク, 2=ヘルプ, -1=なし)
+	// どのメニューが開いているかは MenuOpenHub (ライブラリのハブ) が持つ。
 	in-out property <int> menu-index: -1;         // キーボード選択中の行
 	in-out property <bool> menu-alt-held: false;  // Alt 押下中 (Rust 側が ModifiersChanged で同期する)
 
@@ -82,28 +82,28 @@ export component TimeKeeperWindow inherits Window {
 		file-button := FluentMenuBarItem {
 			entry: { title: root.file-menu-title };
 			access-key-underline: root.menu-alt-held;   // Alt 押下中だけ下線 (Windows 風)
-			menu-open: root.open-menu == 0;
+			menu-open: MenuOpenHub.open == 0;
 			description: "ログの保存先と CSV 書き出し。";
-			hovered => { if (root.open-menu >= 0) { root.open-menu = 0; } }
-			clicked => { root.open-menu = root.open-menu == 0 ? -1 : 0; }
+			hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.open = 0; } }
+			clicked => { MenuOpenHub.toggle(0); }
 		}
 
 		task-button := FluentMenuBarItem {
 			entry: { title: root.task-menu-title };
 			access-key-underline: root.menu-alt-held;
-			menu-open: root.open-menu == 1;
+			menu-open: MenuOpenHub.open == 1;
 			description: "計測の開始 / 停止。";
-			hovered => { if (root.open-menu >= 0) { root.open-menu = 1; } }
-			clicked => { root.open-menu = root.open-menu == 1 ? -1 : 1; }
+			hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.open = 1; } }
+			clicked => { MenuOpenHub.toggle(1); }
 		}
 
 		help-button := FluentMenuBarItem {
 			entry: { title: root.help-menu-title };
 			access-key-underline: root.menu-alt-held;
-			menu-open: root.open-menu == 2;
+			menu-open: MenuOpenHub.open == 2;
 			description: "操作方法とバージョン情報。";
-			hovered => { if (root.open-menu >= 0) { root.open-menu = 2; } }
-			clicked => { root.open-menu = root.open-menu == 2 ? -1 : 2; }
+			hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.open = 2; } }
+			clicked => { MenuOpenHub.toggle(2); }
 		}
 	}
 
@@ -336,7 +336,7 @@ export component TimeKeeperWindow inherits Window {
 
 	// ---- ドロップダウン (in-window オーバーレイとして自前描画) ----
 	file-popup := FluentMenuFrame {
-		visible: root.open-menu == 0;
+		visible: MenuOpenHub.open == 0;
 		x: file-button.absolute-position.x;
 		y: menu-bar.height - 1px;
 		width: max(file-popup.content-width, file-popup.layout-min-width);
@@ -347,7 +347,7 @@ export component TimeKeeperWindow inherits Window {
 		current-row <=> root.menu-index;
 		activated(i) => {
 			if (i >= 0 && root.file-actions[i] != "") {
-				root.open-menu = -1;
+				MenuOpenHub.close();
 				root.menu-item-clicked(root.file-actions[i]);
 			}
 		}
@@ -363,7 +363,7 @@ export component TimeKeeperWindow inherits Window {
 	}
 
 	task-popup := FluentMenuFrame {
-		visible: root.open-menu == 1;
+		visible: MenuOpenHub.open == 1;
 		x: task-button.absolute-position.x;
 		y: menu-bar.height - 1px;
 		width: max(task-popup.content-width, task-popup.layout-min-width);
@@ -374,7 +374,7 @@ export component TimeKeeperWindow inherits Window {
 		current-row <=> root.menu-index;
 		activated(i) => {
 			if (i >= 0 && root.task-actions[i] != "") {
-				root.open-menu = -1;
+				MenuOpenHub.close();
 				root.menu-item-clicked(root.task-actions[i]);
 			}
 		}
@@ -389,7 +389,7 @@ export component TimeKeeperWindow inherits Window {
 	}
 
 	help-popup := FluentMenuFrame {
-		visible: root.open-menu == 2;
+		visible: MenuOpenHub.open == 2;
 		x: help-button.absolute-position.x;
 		y: menu-bar.height - 1px;
 		width: max(help-popup.content-width, help-popup.layout-min-width);
@@ -400,7 +400,7 @@ export component TimeKeeperWindow inherits Window {
 		current-row <=> root.menu-index;
 		activated(i) => {
 			if (i >= 0 && root.help-actions[i] != "") {
-				root.open-menu = -1;
+				MenuOpenHub.close();
 				root.menu-item-clicked(root.help-actions[i]);
 			}
 		}
@@ -481,9 +481,7 @@ export component TimeKeeperWindow inherits Window {
 	// ---- メニューの外側クリック捕捉 (ライブラリのレイヤ) ----
 	// メニューバーより下だけを覆うので、バー項目の hover / 開き替えは生きる。
 	MenuDismissLayer {
-		active: root.open-menu >= 0;
 		top: menu-bar.height;
-		dismiss => { root.open-menu = -1; }
 	}
 
 	// ---- メニュー項目の説明 (左下ポップアップ方式) ----

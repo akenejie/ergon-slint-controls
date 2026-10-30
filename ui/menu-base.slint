@@ -29,6 +29,25 @@ export global AccessKeyHub {
 	}
 }
 
+// メニューバーの開閉状態を集めるハブ。どのメニューが開いているかの唯一の
+// 情報源で、ライブラリの部品 (外側クリック捕捉レイヤなど) もこれを読む。
+// アプリはバー項目やポップアップをこれに束ね、Rust 側のキーボード操作
+// (Alt+文字での開閉など) と状態を共有する。
+export global MenuOpenHub {
+	// 開いているメニューの番号 (バー項目の index)。-1 = どれも開いていない。
+	in-out property <int> open: -1;
+
+	// 開いているメニューを閉じる (外側クリック / ウィンドウの非活性など)。
+	public function close() {
+		self.open = -1;
+	}
+
+	// 項目のクリック。同じ項目が開いていれば閉じ、そうでなければ開く。
+	public function toggle(index: int) {
+		self.open = self.open == index ? -1 : index;
+	}
+}
+
 // メニュー項目の説明 (ツールチップ) を集めるハブ。バー項目とドロップダウン
 // が報告し、呼び出し側が出力先を選ぶ:
 // - 左下ポップアップで出すなら MenuHintPopup を置く

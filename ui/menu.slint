@@ -10,7 +10,7 @@
 // Only the light color-scheme values are used here, matching the rest of the
 // application's fixed colors.
 
-import { MenuBarItemBase, MenuBarBase, MenuFrameBase, MenuItemBase, MenuHintHub } from "menu-base.slint";
+import { MenuBarItemBase, MenuBarBase, MenuFrameBase, MenuItemBase, MenuHintHub, MenuOpenHub } from "menu-base.slint";
 
 /// Top-level menu bar button. Exposes the hover state and a description that
 /// the application shows in its bottom status line. The description is also
@@ -200,17 +200,17 @@ export component FluentMenuFrame inherits MenuFrameBase {
 }
 
 /// メニュー (in-window オーバーレイ) が開いている間、ポップアップの外側の
-/// クリックを捕捉して閉じるレイヤ。メニューバーより下の領域だけを覆うので
-/// バー項目の hover / クリック (開き替え) は生きる。押した瞬間 (down) に
-/// dismiss を発火する (左右 / 中 / X1 / X2 の全ボタンで発火。button 判定は
-/// 不要)。開閉状態の管理は呼び出し側の責任 (Rust 側のキーボード操作と共有
-/// するため) なので、レイヤは dismiss を報せるだけ。
+/// クリックを捕捉して閉じるレイヤ。`MenuOpenHub.open` を読んで自動で有効に
+/// なり、外側の押下 (メニューバーより下。全ボタン) で `MenuOpenHub.close()`
+/// を呼ぶ。メニューバーの領域は覆わないので、バー項目の hover / 開き替えは
+/// 生きる。追加の後始末 (選択行のリセットなど) が必要なら dismiss を受ける。
 export component MenuDismissLayer inherits Rectangle {
-	// メニューが開いている間だけ有効になるよう、呼び出し側が束ねる。
-	in property <bool> active: false;
+	// 既定では MenuOpenHub.open >= 0 で有効。自前で開閉状態を持つアプリは
+	// ここを束ね替えてよい。
+	in property <bool> active: MenuOpenHub.open >= 0;
 	// 覆う領域の上端 (メニューバーの高さ。バーは塞がない)。
 	in property <length> top: 0px;
-	// メニューを閉じる処理。
+	// 閉じたときの追加処理 (省略可)。
 	callback dismiss();
 
 	x: 0;
@@ -226,6 +226,7 @@ export component MenuDismissLayer inherits Rectangle {
 		height: parent.height - root.top;
 		pointer-event(e) => {
 			if (e.kind == PointerEventKind.down) {
+				MenuOpenHub.close();
 				root.dismiss();
 			}
 		}

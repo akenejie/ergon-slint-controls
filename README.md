@@ -82,7 +82,7 @@ export { MenuAccessKey, AccessKeyHub }
 ### Rust (ライブラリ側の参照)
 
 ```rust
-use ergon_slint_controls::menu::{parse_access_key, access_key_char};
+use ergon_slint_controls::menu::{parse_access_key, access_key_char, pressed_char};
 use ergon_slint_controls::{AccessKeyHub, AccessKeyParts, MessageIcon, ...};
 use modal_window::{ModalSlot, ModalChild, OverlayHost, ...};
 ```
@@ -125,7 +125,7 @@ Rust 側のキー発火も同じ 1 本の文字列から同じ関数で読むた
 
 ```slint
 file-popup := FluentMenuFrame {
-    visible: root.open-menu == 0;
+    visible: MenuOpenHub.open == 0;             // 開閉状態はハブが持つ
     x: file-button.absolute-position.x;
     y: menu-bar.height - 1px;
     width: max(file-popup.content-width, file-popup.layout-min-width);
@@ -133,7 +133,10 @@ file-popup := FluentMenuFrame {
     items: root.file-items;
     access-key-underline: root.menu-alt-held;   // Alt 押下中だけ下線
     current-row <=> root.menu-index;            // hover とキーボード選択の集約点
-    activated(i) => { /* 行 i が選ばれた */ }
+    activated(i) => {
+        MenuOpenHub.close();                    // 選んだら閉じる
+        /* 行 i の処理 */
+    }
 }
 ```
 
@@ -162,6 +165,7 @@ examples/timekeeper.rs のキー処理 (Alt+文字で開閉、ArrowUp/Down、Ent
 | `MenuAccessKey` | `pure callback parse(title) -> AccessKeyParts` | 描画側の `&` 記法解釈。**アプリは `on_parse` で Rust 実装へ差し込む (必須)** |
 | `AccessKeyHub` | `press(key: string)` / `pressed` | ラベルのアクセスキー通知ハブ |
 | `MenuHintHub` | `text` / `frame-text` / `bar-text` | メニュー項目の説明 (ツールチップ) を集めるハブ (後述) |
+| `MenuOpenHub` | `open` / `close()` / `toggle(index)` | メニューの開閉状態の唯一の情報源。外側クリック捕捉レイヤもこれを読む |
 
 ### メニュー項目の説明 (ツールチップ)
 
@@ -197,19 +201,32 @@ Text { text: MenuHintHub.text != "" ? MenuHintHub.text : root.own-hint; }
 優先順位は「開いているドロップダウンの項目の説明 > バー項目の説明」
 (メニューを開いている間は項目の説明、閉じている間はボタンの説明が出る)。
 
-### メニューの外側クリックで閉じる
+### メニューの開閉と外側クリック / 非活性で閉じる
 
-in-window オーバーレイのドロップダウンは、開いている間の外側クリックを
-`MenuDismissLayer` が捕捉して閉じる。メニューバーより下の領域だけを覆うため
-バー項目の hover / 開き替えは生きる (押した瞬間 = down で発火、全ボタン共通)。
-開閉状態の管理はアプリの責任 (キーボード操作と状態を共有する) なので、
-レイヤは `dismiss` を報せるだけ:
+メニューの開閉状態は `MenuOpenHub` グローバルが唯一の情報源。バー項目と
+ポップアップを束ね、外側クリックはライブラリが閉じる:
 
 ```slint
-MenuDismissLayer {
-    active: root.open-menu >= 0;
-    top: menu-bar.height;
-    dismiss => { root.open-menu = -1; }
+file-button := FluentMenuBarItem {
+    entry: { title: root.file-menu-title };
+    menu-open: MenuOpenHub.open == 0;
+    hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.open = 0; } }  // 開き替え
+    clicked => { MenuOpenHub.toggle(0); }
+}
+
+// in-window オーバーレイのドロップダウンは、開いている間の外側クリックを
+// ライブラリが捕捉して閉じる (メニューバーより下だけ覆うので、バー項目の
+// hover / 開き替えは生きる。押した瞬間 = down で閉じ、全ボタン共通)。
+// active は既定で MenuOpenHub に追従するので、配置は 1 行:
+MenuDismissLayer { top: menu-bar.height; }
+```
+
+**ウィンドウの外がクリックされた (非活性になった) ときの閉じ**は、winit フック
+から 1 行ハブへ伝える (フォーカスイベントの観測だけがアプリ側の責任):
+
+```rust
+if let winit::event::WindowEvent::Focused(false) = event {
+    ui.global::<MenuOpenHub>().invoke_close();
 }
 ```
 
@@ -233,6 +250,9 @@ ui.global::<MenuAccessKey>().on_parse(|title| {
   空ならアクセスキーなし
 - `access_key_char(&str) -> Option<char>` — `&X` の X。Rust 側のキー発火はこれで
   タイトルと比較する
+- `pressed_char(&winit::event::KeyEvent) -> Option<char>` — 押されたキーの文字
+  (小文字)。**離し (Released) は無視**するので、押下と離しの二重発火がない。
+  winit フックのキー処理はこれ 1 本でよい
 
 ### ラベルのアクセスキー → 任意の処理
 
