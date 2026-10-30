@@ -7,8 +7,8 @@
 // クレート内のサンプルでは同じコンパイル単位にするため各 ui ファイルから
 // 直接 import している。API の形は同じ。
 
-import { MenuAccessKey, AccessKeyHub, MenuHintHub, AccessKeyLabel } from "menu-base.slint";
-import { FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView } from "menu.slint";
+import { MenuAccessKey, AccessKeyHub, AccessKeyLabel } from "menu-base.slint";
+import { FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView, MenuHintPopup, MenuDismissLayer } from "menu.slint";
 import { Label } from "label.slint";
 import { SmallButton } from "small-button.slint";
 import { ModeToggleButton } from "mode-toggle.slint";
@@ -58,10 +58,6 @@ export component TimeKeeperWindow inherits Window {
 	in-out property <bool> break-reminder: true;
 	in-out property <[SessionEntry]> sessions: [];   // 今日のセッション一覧
 	in-out property <string> hint-text;           // アプリ側のヒント (計測開始など)
-
-	// 説明行 (ステータスバー方式)。メニュー項目の説明 (MenuHintHub.text) を
-	// 優先し、なければアプリ側のヒントを出す。
-	in-out property <string> hint-line: MenuHintHub.text != "" ? MenuHintHub.text : root.hint-text;
 
 	// CSV 書き出しのオプション (オーバーレイ パネルが直接バインドし、
 	// 子ウィンドウ方式は Rust が開くときに同期する)。
@@ -118,7 +114,7 @@ export component TimeKeeperWindow inherits Window {
 		width: root.width;
 		height: root.height - menu-bar.height;
 
-		// メニュー項目の説明行 (ステータスバー方式: MenuHintHub.text を束ねる)
+		// アプリ側のヒント行 (メニュー項目の説明は左下ポップアップが出す)
 		Rectangle {
 			height: 20px;
 			Text {
@@ -126,7 +122,7 @@ export component TimeKeeperWindow inherits Window {
 				vertical-alignment: center;
 				font-size: 0.8rem;
 				color: #999;
-				text: root.hint-line;
+				text: root.hint-text;
 			}
 		}
 
@@ -481,4 +477,15 @@ export component TimeKeeperWindow inherits Window {
 			}
 		}
 	}
+
+	// ---- メニューの外側クリック捕捉 (ライブラリのレイヤ) ----
+	// メニューバーより下だけを覆うので、バー項目の hover / 開き替えは生きる。
+	MenuDismissLayer {
+		active: root.open-menu >= 0;
+		top: menu-bar.height;
+		dismiss => { root.open-menu = -1; }
+	}
+
+	// ---- メニュー項目の説明 (左下ポップアップ方式) ----
+	MenuHintPopup { }
 }

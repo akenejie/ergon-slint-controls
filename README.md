@@ -22,8 +22,8 @@ Windows 風の `&` アクセスキー」を 1 つのライブラリで揃える�
 cargo run --example timekeeper
 ```
 
-(サンプルはステータスバー方式。左下ポップアップ方式は `MenuHintPopup` を
-ウィンドウのルートに置く。)
+(サンプルは左下ポップアップ方式 + `MenuDismissLayer` による外側クリック閉じ。
+ステータスバー方式は `MenuHintHub.text` を自分のステータス行に束ねる。)
 
 ---
 
@@ -119,6 +119,7 @@ Rust 側のキー発火も同じ 1 本の文字列から同じ関数で読むた
 | `MenuEntry` | `title` / `shortcut` / `checkable` / `checked` / `enabled` / `is-separator` | 項目データ。`&` 記法は `title` に書く |
 | `AccessKeyLabel` | `text` / `underline` / `color` / `font-size` / `font-weight` / `horizontal-alignment` / `plain-text` | `&` 記法を解釈するテキストの素 |
 | `MenuHintPopup` | (配置するだけ) | メニュー項目の説明を出す左下ポップアップ (後述) |
+| `MenuDismissLayer` | `active` / `top` / `dismiss()` | メニューの外側クリックで閉じるレイヤ (後述) |
 
 ドロップダウンは標準 `MenuBar` と違い **アプリが配置する in-window オーバーレイ**:
 
@@ -184,17 +185,33 @@ file-popup := FluentMenuFrame {
 **出力先は選べる**:
 
 ```slint
-// (a) ステータスバーのあるアプリ: 自分のステータス行に束ねる
+// (a) 左下ポップアップ (ステータスバーのないアプリ。ウィンドウのルートの
+//     最後に置く。hover 中だけ左下に浮かぶ)
+MenuHintPopup { }
+
+// (b) ステータスバーのあるアプリ: 自分のステータス行に束ねる
 //     (見た目はアプリ固有なのでライブラリは描かない)
 Text { text: MenuHintHub.text != "" ? MenuHintHub.text : root.own-hint; }
-
-// (b) ステータスバーのないアプリ: 左下ポップアップ (ウィンドウのルートの
-//     最後に置く。hover 中だけ浮かぶ)
-MenuHintPopup { }
 ```
 
 優先順位は「開いているドロップダウンの項目の説明 > バー項目の説明」
 (メニューを開いている間は項目の説明、閉じている間はボタンの説明が出る)。
+
+### メニューの外側クリックで閉じる
+
+in-window オーバーレイのドロップダウンは、開いている間の外側クリックを
+`MenuDismissLayer` が捕捉して閉じる。メニューバーより下の領域だけを覆うため
+バー項目の hover / 開き替えは生きる (押した瞬間 = down で発火、全ボタン共通)。
+開閉状態の管理はアプリの責任 (キーボード操作と状態を共有する) なので、
+レイヤは `dismiss` を報せるだけ:
+
+```slint
+MenuDismissLayer {
+    active: root.open-menu >= 0;
+    top: menu-bar.height;
+    dismiss => { root.open-menu = -1; }
+}
+```
 
 ---
 
