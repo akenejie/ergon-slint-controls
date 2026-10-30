@@ -429,6 +429,25 @@ ui.window().on_winit_window_event(move |_win, event| -> EventResult {
 開閉中の項目アクセスキー、ラベルとボタンのアクセスキー) は
 **examples/timekeeper.rs** を参照。
 
+### メニュー項目の処理: 即時 or 再描画後に
+
+メニューを閉じて**ネイティブ ダイアログを出す処理**は、同ターンで実行すると
+閉じた描画が行われないままダイアログのネストしたループに入り、ポップアップが
+残って見える。`menu::defer_action` は再描画を要求してから処理を回す:
+
+```rust
+ui.on_menu_item_clicked(move |id| {
+    match id.as_str() {
+        // 状態を変えるだけの即時処理 → defer しない (閉じた更新と同じ
+        // フレームにまとまり、表示更新は 1 回で済む)
+        "--toggle" => toggle_something(),
+        // ブロックする処理 (ダイアログ / 設定画面) → 閉じた描画の後に
+        "--settings" => menu::defer_action(&ui, move || open_settings(...)),
+        _ => {}
+    }
+});
+```
+
 ## バージョンの固定と更新
 
 - `Cargo.toml` の `tag = "v..."` でバージョンを固定する
