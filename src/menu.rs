@@ -87,6 +87,28 @@ pub fn pressed_char(event: &slint::winit_030::winit::event::KeyEvent) -> Option<
 	}
 }
 
+/// メニュー項目の処理を「再描画 → 次のイベントループ」へ回す。
+///
+/// メニューを閉じてからネイティブ ダイアログを出す処理を同ターンで実行する
+/// と、閉じた描画が行われないままダイアログのネストしたループに入り、
+/// 「ポップアップが消えないままメッセージボックスが出る」ように見える。
+/// まず再描画を要求し、描画が済むまでの時間を置いてから処理を実行する。
+///
+/// ```ignore
+/// ui.on_menu_item_clicked(move |id| {
+///     ergon_slint_controls::menu::defer_action(&ui, move || {
+///         // 閉じた描画の後で実行される
+///     });
+/// });
+/// ```
+pub fn defer_action<P: slint::ComponentHandle>(
+	ui: &P,
+	action: impl FnOnce() + 'static,
+) {
+	ui.window().request_redraw();
+	slint::Timer::single_shot(std::time::Duration::from_millis(50), action);
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
