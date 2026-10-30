@@ -405,47 +405,9 @@ fn main() -> Result<(), slint::PlatformError> {
 		let start_stop = start_stop.clone();
 		ui.on_menu_item_clicked(move |id| {
 			let Some(ui) = weak.upgrade() else { return };
-			// 処理は再描画の後へ (メニューを閉じた描画が先に行われる)。
-			// 呼び出しのたびに必要な状態を clone して遅延クロージャへ渡す。
-			let weak2 = weak.clone();
-			let save_dir = save_dir.clone();
-			let sessions = sessions.clone();
-			let start_stop = start_stop.clone();
-			let slot = slot.clone();
-			let do_export = do_export.clone();
-			ergon_slint_controls::menu::defer_action(&ui, move || {
-				let Some(ui) = weak2.upgrade() else { return };
-				match id.as_str() {
-				"--folder" => {
-					if let Some(dir) = ergon_slint_controls::dialogs::prompt_folder("ログの保存先フォルダ", None) {
-						*save_dir.borrow_mut() = Some(dir.clone());
-						ui.set_hint_text(slint::format!("保存先: {}", dir.display()).into());
-					}
-				}
-				"--csv" => open_export(&ui, &slot, do_export.clone()),
-				"--exit" => {
-					// 実行中ならカスタム ボタンで尋ねる (選択 index を返す)。
-					if ui.get_running() {
-						match ergon_slint_controls::dialogs::message_box_custom(
-							"終了の確認",
-							"計測が実行中です。どうしますか？",
-							&["停止して終了 (&Q)", "破棄して終了 (&D)", "キャンセル"],
-							Some(2),   // 既定 (Enter) はキャンセル
-						) {
-							Some(0) => {
-								start_stop();
-								slint::quit_event_loop().ok();
-							}
-							Some(1) => {
-								ui.set_running(false);
-								slint::quit_event_loop().ok();
-							}
-							_ => {}
-						}
-					} else {
-						slint::quit_event_loop().ok();
-					}
-				}
+			// ブロックしない即時処理: メニューを閉じた更新と同じフレームに
+			// まとまる (表示更新は 1 回だけ)。
+			match id.as_str() {
 				"--start" | "--stop" => start_stop(),
 				"--clear" => {
 					while sessions.row_count() > 0 {
@@ -453,24 +415,69 @@ fn main() -> Result<(), slint::PlatformError> {
 					}
 					ui.set_hint_text("一覧を空にしました。".into());
 				}
-				"--help" => ergon_slint_controls::dialogs::show_message_box(
-					"操作方法",
-					"Alt+F/T/H でメニュー、矢印キーで移動、Enter で決定。\n\
-					 メニューを開いている間は各項目の (&X) の文字でも発火します。\n\
-					 R で休憩の合図の分を入力欄へ、B/P で開始 / 停止。\n\
-					 時計カードはドラッグで移動できます。",
-					ergon_slint_controls::dialogs::MessageIcon::Info,
-				),
-				"--about" => ergon_slint_controls::dialogs::show_message_box(
-					"バージョン情報",
-					"じかん君 サンプル 1.0\nergon-slint-controls のデモです。",
-					ergon_slint_controls::dialogs::MessageIcon::Info,
-				),
-				_ => {}
+				// ネイティブ ダイアログを出す処理: メニューを閉じた描画を
+				// 先に済ませてから実行する。
+				_ => {
+					// 呼び出しのたびに必要な状態を clone して遅延クロージャへ渡す。
+					let weak2 = weak.clone();
+					let save_dir = save_dir.clone();
+					let slot = slot.clone();
+					let do_export = do_export.clone();
+					let start_stop = start_stop.clone();
+					ergon_slint_controls::menu::defer_action(&ui, move || {
+						let Some(ui) = weak2.upgrade() else { return };
+						match id.as_str() {
+						"--folder" => {
+							if let Some(dir) = ergon_slint_controls::dialogs::prompt_folder("ログの保存先フォルダ", None) {
+								*save_dir.borrow_mut() = Some(dir.clone());
+								ui.set_hint_text(slint::format!("保存先: {}", dir.display()).into());
+							}
+						}
+						"--csv" => open_export(&ui, &slot, do_export.clone()),
+						"--exit" => {
+							// 実行中ならカスタム ボタンで尋ねる (選択 index を返す)。
+							if ui.get_running() {
+								match ergon_slint_controls::dialogs::message_box_custom(
+									"終了の確認",
+									"計測が実行中です。どうしますか？",
+									&["停止して終了 (&Q)", "破棄して終了 (&D)", "キャンセル"],
+									Some(2),   // 既定 (Enter) はキャンセル
+								) {
+									Some(0) => {
+										start_stop();
+										slint::quit_event_loop().ok();
+									}
+									Some(1) => {
+										ui.set_running(false);
+										slint::quit_event_loop().ok();
+									}
+									_ => {}
+								}
+							} else {
+								slint::quit_event_loop().ok();
+							}
+						}
+						"--help" => ergon_slint_controls::dialogs::show_message_box(
+							"操作方法",
+							"Alt+F/T/H でメニュー、矢印キーで移動、Enter で決定。\n\
+							 メニューを開いている間は各項目の (&X) の文字でも発火します。\n\
+							 R で休憩の合図の分を入力欄へ、B/P で開始 / 停止。\n\
+							 時計カードはドラッグで移動できます。",
+							ergon_slint_controls::dialogs::MessageIcon::Info,
+						),
+						"--about" => ergon_slint_controls::dialogs::show_message_box(
+							"バージョン情報",
+							"じかん君 サンプル 1.0\nergon-slint-controls のデモです。",
+							ergon_slint_controls::dialogs::MessageIcon::Info,
+						),
+						_ => {}
+						}
+					});
 				}
-			});
+			}
 		});
 	}
+
 	{
 		let weak = ui.as_weak();
 		ui.on_break_changed(move |v| {
