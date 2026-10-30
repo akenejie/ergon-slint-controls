@@ -127,7 +127,7 @@ export component TimeKeeperWindow inherits Window {
 		}
 
 		// 時計カードを置く領域 (ドラッグで移動できる)
-		Rectangle {
+		main-area := Rectangle {
 			clip: true;
 			vertical-stretch: 1;
 
@@ -155,8 +155,11 @@ export component TimeKeeperWindow inherits Window {
 					}
 					moved => {
 						if (self.pressed) {
-							clock-card.x = Math.max(4px, Math.min(parent.width - clock-card.width - 4px, clock-card.x + self.mouse-x - self.grab-x));
-							clock-card.y = Math.max(4px, Math.min(parent.height - clock-card.height - 4px, clock-card.y + self.mouse-y - self.grab-y));
+							// 領域 (main-area) の内側にクランプしながら移動する。
+							// parent は TouchArea の親 (= カード自身) なので
+							// 領域の参照には名前を使う。
+							clock-card.x = Math.max(4px, Math.min(main-area.width - clock-card.width - 4px, clock-card.x + self.mouse-x - self.grab-x));
+							clock-card.y = Math.max(4px, Math.min(main-area.height - clock-card.height - 4px, clock-card.y + self.mouse-y - self.grab-y));
 							self.grab-x = self.mouse-x;
 							self.grab-y = self.mouse-y;
 						}
