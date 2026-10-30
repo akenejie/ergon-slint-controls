@@ -144,6 +144,10 @@ export component TimeKeeperWindow inherits Window {
 				drop-shadow-color: #00000022;
 
 				drag := TouchArea {
+					// 掴んだときのカード内オフセット (押下時に固定する)。
+					// moved のたびに更新すると、カードが動いた分だけ
+					// mouse-x/y も動いて移動量が相殺され、半分の距離を
+					// かくかく進むことになる。
 					property <length> grab-x;
 					property <length> grab-y;
 					changed pressed => {
@@ -155,13 +159,11 @@ export component TimeKeeperWindow inherits Window {
 					}
 					moved => {
 						if (self.pressed) {
-							// 領域 (main-area) の内側にクランプしながら移動する。
-							// parent は TouchArea の親 (= カード自身) なので
-							// 領域の参照には名前を使う。
+							// ポインタの領域 (main-area) 座標 = カードの現在
+							// 位置 + カード内ポインタ位置。そこから掴んだ
+							// オフセットを引いた場所にカードを置く。
 							clock-card.x = Math.max(4px, Math.min(main-area.width - clock-card.width - 4px, clock-card.x + self.mouse-x - self.grab-x));
 							clock-card.y = Math.max(4px, Math.min(main-area.height - clock-card.height - 4px, clock-card.y + self.mouse-y - self.grab-y));
-							self.grab-x = self.mouse-x;
-							self.grab-y = self.mouse-y;
 						}
 					}
 				}

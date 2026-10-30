@@ -1,6 +1,6 @@
 [package]
 name = "ergon-slint-controls"
-version = "0.3.50"
+version = "0.3.51"
 edition = "2021"
 links = "ergon-slint-controls"
 
