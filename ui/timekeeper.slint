@@ -1,0 +1,498 @@
+// じかん君 (サンプル アプリのメイン ウィンドウ)。
+// examples/timekeeper.rs から使う。このライブラリの全 Slint 部品を使うデモ:
+// メニューバー (& 記法) / ドロップダウン / 小ボタン / トグルボタン /
+// チェックボックス / スピンボックス / ラベルのアクセスキー / ツールチップ。
+//
+// 外部アプリでは `import { ... } from "@ergon_slint_controls"` と書くところを、
+// クレート内のサンプルでは同じコンパイル単位にするため各 ui ファイルから
+// 直接 import している。API の形は同じ。
+
+import { MenuAccessKey, AccessKeyHub, AccessKeyLabel } from "menu-base.slint";
+import { FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView } from "menu.slint";
+import { Label } from "label.slint";
+import { SmallButton } from "small-button.slint";
+import { ModeToggleButton } from "mode-toggle.slint";
+import { CosmicCheckBox } from "cosmic-checkbox.slint";
+import { SpinBox } from "spinbox.slint";
+import { AppTooltip } from "project-tooltip.slint";
+import { ListView, LineEdit } from "std-widgets.slint";
+// Tooltip は std-widgets ではなく slint の組み込み要素 (import 不要)。
+
+export { MenuAccessKey, AccessKeyHub }
+
+// ログ 1 行分 (Rust 側が VecModel で積む)。
+export struct SessionEntry {
+	start: string,   // 開始時刻の表示 ("14:05" など)
+	task: string,    // 作業名
+	secs: int,       // 秒数 (CSV 用)
+	label: string,   // 秒数の表示 ("25:00" など)
+}
+
+export component TimeKeeperWindow inherits Window {
+	title: "じかん君";
+	preferred-width: 620px;
+	preferred-height: 430px;
+	background: #f7f7f8;
+
+	// ---- メニューの状態 ----
+	in-out property <int> open-menu: -1;          // 開いているドロップダウン (0=ファイル, 1=タスク, 2=ヘルプ, -1=なし)
+	in-out property <int> menu-index: -1;         // キーボード選択中の行
+	in-out property <bool> menu-alt-held: false;  // Alt 押下中 (Rust 側が ModifiersChanged で同期する)
+
+	// タイトル。& 記法の単一ソース (Rust 側のキー処理も読む)。
+	in property <string> file-menu-title: "ファイル (&F)";
+	in property <string> task-menu-title: "タスク (&T)";
+	in property <string> help-menu-title: "ヘルプ (&H)";
+	// 開始/停止ボタンのタイトル (実行中で入れ替わる。Rust 側のキー処理も読む)。
+	in property <string> start-title: root.running ? "停止 (&P)" : "開始 (&B)";
+	in property <string> break-title: "休憩の合図 (&R):";
+
+	// ---- アプリの状態 ----
+	in-out property <bool> running: false;
+	in-out property <string> task-name: "作業";
+	in-out property <int> elapsed-secs: 0;        // Rust のタイマが毎秒更新
+	in-out property <string> clock-text: "00:00:00";
+	in-out property <bool> show-remaining: false; // 経過 / 残り
+	in-out property <int> goal-minutes: 25;       // 残り表示と進捗バーの目標
+	in-out property <int> break-minutes: 5;
+	in-out property <bool> break-reminder: true;
+	in-out property <[SessionEntry]> sessions: [];   // 今日のセッション一覧
+	in-out property <string> hint-text;           // メニュー項目の説明など
+
+	// CSV 書き出しのオプション (オーバーレイ パネルが直接バインドし、
+	// 子ウィンドウ方式は Rust が開くときに同期する)。
+	in-out property <bool> export-comma: true;    // 区切り (true=カンマ, false=タブ)
+	in-out property <bool> export-header: true;   // ヘッダー行
+	in-out property <bool> export-bom: false;     // BOM 付き (Excel 向け)
+
+	callback menu-item-clicked(string);
+	callback break-changed(int);
+	callback drag-changed(bool);   // 時計カードのドラッグ (自前カーソルへ切替)
+	callback bar-hover(bool);      // 進捗バーの hover (十字カーソルへ切替)
+	callback export-ok();
+	callback export-cancel();
+	in-out property <bool> export-overlay-visible: false;
+
+	// ---- メニューバー ----
+	menu-bar := FluentMenuBarImpl {
+		x: 0;
+		y: 0;
+		width: root.width;
+
+		file-button := FluentMenuBarItem {
+			entry: { title: root.file-menu-title };
+			access-key-underline: root.menu-alt-held;   // Alt 押下中だけ下線 (Windows 風)
+			menu-open: root.open-menu == 0;
+			description: "ログの保存先と CSV 書き出し。";
+			hovered => { if (root.open-menu >= 0) { root.open-menu = 0; } }
+			clicked => { root.open-menu = root.open-menu == 0 ? -1 : 0; }
+		}
+
+		task-button := FluentMenuBarItem {
+			entry: { title: root.task-menu-title };
+			access-key-underline: root.menu-alt-held;
+			menu-open: root.open-menu == 1;
+			description: "計測の開始 / 停止。";
+			hovered => { if (root.open-menu >= 0) { root.open-menu = 1; } }
+			clicked => { root.open-menu = root.open-menu == 1 ? -1 : 1; }
+		}
+
+		help-button := FluentMenuBarItem {
+			entry: { title: root.help-menu-title };
+			access-key-underline: root.menu-alt-held;
+			menu-open: root.open-menu == 2;
+			description: "操作方法とバージョン情報。";
+			hovered => { if (root.open-menu >= 0) { root.open-menu = 2; } }
+			clicked => { root.open-menu = root.open-menu == 2 ? -1 : 2; }
+		}
+	}
+
+	// hover 中のメニュー項目の説明 (各ポップアップの hover-status を集約)。
+	// メニューを開いていないときは Rust 側が設定する hint-text を出す。
+	in-out property <string> menu-hint:
+		root.open-menu == 0 ? file-popup.hover-status
+		: root.open-menu == 1 ? task-popup.hover-status
+		: root.open-menu == 2 ? help-popup.hover-status
+		: "";
+
+	// ---- 本体 ----
+	VerticalLayout {
+		x: 0;
+		y: menu-bar.height;
+		width: root.width;
+		height: root.height - menu-bar.height;
+
+		// メニュー項目の説明行
+		Rectangle {
+			height: 20px;
+			Text {
+				x: 8px;
+				vertical-alignment: center;
+				font-size: 0.8rem;
+				color: #999;
+				text: root.menu-hint == "" ? root.hint-text : root.menu-hint;
+			}
+		}
+
+		// 時計カードを置く領域 (ドラッグで移動できる)
+		Rectangle {
+			clip: true;
+			vertical-stretch: 1;
+
+			clock-card := Rectangle {
+				x: 48px;
+				y: 28px;
+				width: 260px;
+				height: 132px;
+				background: white;
+				border-radius: 10px;
+				border-width: 1px;
+				border-color: #e2e2e6;
+				drop-shadow-blur: 14px;
+				drop-shadow-color: #00000022;
+
+				drag := TouchArea {
+					property <length> grab-x;
+					property <length> grab-y;
+					changed pressed => {
+						if (self.pressed) {
+							self.grab-x = self.mouse-x;
+							self.grab-y = self.mouse-y;
+						}
+						root.drag-changed(self.pressed);
+					}
+					moved => {
+						if (self.pressed) {
+							clock-card.x = Math.max(4px, Math.min(parent.width - clock-card.width - 4px, clock-card.x + self.mouse-x - self.grab-x));
+							clock-card.y = Math.max(4px, Math.min(parent.height - clock-card.height - 4px, clock-card.y + self.mouse-y - self.grab-y));
+							self.grab-x = self.mouse-x;
+							self.grab-y = self.mouse-y;
+						}
+					}
+				}
+
+				VerticalLayout {
+					padding: 18px;
+					spacing: 6px;
+
+					Text {
+						text: root.clock-text;
+						font-size: 42px;
+						font-weight: 700;
+						color: root.running ? #2f6fde : #4a4a50;
+						horizontal-alignment: center;
+					}
+					Text {
+						text: root.running ? root.task-name : "停止中";
+						font-size: 0.95rem;
+						color: #888;
+						horizontal-alignment: center;
+					}
+				}
+
+				// std-widgets の Tooltip の中身として AppTooltip を使う
+				if drag.has-hover : Tooltip {
+					AppTooltip { text: "ドラッグで移動できます"; }
+				}
+			}
+
+			// 目標に対する進捗バー
+			bar := Rectangle {
+				x: 48px;
+				y: clock-card.y + clock-card.height + 18px;
+				width: 260px;
+				height: 6px;
+				border-radius: 3px;
+				background: #e6e6ea;
+
+				Rectangle {
+					width: parent.width * (root.goal-minutes > 0 ? Math.min(1.0, root.elapsed-secs / (root.goal-minutes * 60.0)) : 0.0);
+					border-radius: 3px;
+					background: #2f6fde;
+				}
+
+				TouchArea {
+					changed has-hover => { root.bar-hover(self.has-hover); }
+				}
+			}
+		}
+
+		// コントロール行
+		HorizontalLayout {
+			padding: 10px;
+			spacing: 10px;
+
+			name-field := LineEdit {
+				text <=> root.task-name;
+				placeholder-text: "いまの作業";
+				vertical-stretch: 0;
+			}
+
+			SmallButton {
+				text: root.start-title;
+				primary: !root.running;
+				tooltip-text: "計測の開始 / 停止。";
+				vertical-stretch: 0;
+				clicked => { root.menu-item-clicked(root.running ? "--stop" : "--start"); }
+			}
+
+			ModeToggleButton {
+				text: "経過";
+				tooltip-text: "経過時間を表示します。";
+				checked: !root.show-remaining;
+				clicked => { root.show-remaining = false; }
+			}
+			ModeToggleButton {
+				text: "残り";
+				tooltip-text: "目標までの残り時間を表示します。";
+				checked: root.show-remaining;
+				clicked => { root.show-remaining = true; }
+			}
+
+			// 見た目だけのチェックボックス。クリック処理は TouchArea で自前実装。
+			Rectangle {
+				width: 16px;
+				height: 16px;
+				CosmicCheckBox { checked: root.break-reminder; }
+				TouchArea { clicked => { root.break-reminder = !root.break-reminder; } }
+			}
+
+			// ラベルのアクセスキー (&R) → スピンボックスへフォーカス
+			Label {
+				text: root.break-title;
+				vertical-stretch: 0;
+				access-key-pressed => { break-spin.focus(); }
+			}
+			break-spin := SpinBox {
+				value <=> root.break-minutes;
+				minimum: 1;
+				maximum: 60;
+				tooltip-text: "この分が経つと休憩の合図を表示します。";
+				edited => { root.break-changed(self.value); }
+			}
+		}
+
+		// ログ パネル (今日のセッション)
+		log-panel := Rectangle {
+			height: 110px;
+			background: white;
+			border-width: 1px;
+			border-color: #e2e2e6;
+
+			ListView {
+				x: 0;
+				y: 0;
+				width: parent.width;
+				height: parent.height;
+
+				for e in root.sessions: HorizontalLayout {
+					height: 24px;
+					padding-left: 10px;
+					padding-right: 10px;
+					spacing: 8px;
+
+					Text {
+						text: e.start;
+						width: 56px;
+						font-size: 0.88rem;
+						color: #888;
+						vertical-alignment: center;
+					}
+					Text {
+						text: e.task;
+						horizontal-stretch: 1;
+						font-size: 0.88rem;
+						color: #444;
+						vertical-alignment: center;
+						overflow: elide;
+					}
+					Text {
+						text: e.label;
+						width: 64px;
+						font-size: 0.88rem;
+						color: #2f6fde;
+						vertical-alignment: center;
+						horizontal-alignment: right;
+					}
+				}
+			}
+		}
+	}
+
+	// ---- メニュー項目モデル (& 記法のタイトルが唯一の情報源) ----
+	in-out property <[MenuItemView]> file-items: [
+		{ entry: { title: "ログの保存先フォルダ... (&O)", enabled: true } },
+		{ entry: { title: "CSV を書き出す (&E)...", enabled: root.sessions.length > 0 } },
+		{ entry: { is-separator: true, enabled: false } },
+		{ entry: { title: "終了 (&X)", enabled: true }, shortcut-text: "Alt+F4" },
+	];
+	// 行 index → コマンド。区切り行は "" (発火しない)。
+	// (Rust 側のキーボード処理は同じ表を menu_action() に持つ)
+	property <[string]> file-actions: [ "--folder", "--csv", "", "--exit" ];
+	in-out property <[MenuItemView]> task-items: [
+		{ entry: { title: "開始 (&B)", enabled: !root.running } },
+		{ entry: { title: "停止 (&P)", enabled: root.running } },
+		{ entry: { is-separator: true, enabled: false } },
+		{ entry: { title: "一覧をクリア (&C)", enabled: root.sessions.length > 0 } },
+	];
+	property <[string]> task-actions: [ "--start", "--stop", "", "--clear" ];
+	in-out property <[MenuItemView]> help-items: [
+		{ entry: { title: "操作方法 (&M)...", enabled: true } },
+		{ entry: { title: "バージョン情報 (&V)...", enabled: true } },
+	];
+	property <[string]> help-actions: [ "--help", "--about" ];
+
+	// ---- ドロップダウン (in-window オーバーレイとして自前描画) ----
+	file-popup := FluentMenuFrame {
+		visible: root.open-menu == 0;
+		x: file-button.absolute-position.x;
+		y: menu-bar.height - 1px;
+		width: max(file-popup.content-width, file-popup.layout-min-width);
+		height: file-popup.content-height;
+
+		items: root.file-items;
+		access-key-underline: root.menu-alt-held;
+		current-row <=> root.menu-index;
+		activated(i) => {
+			if (i >= 0 && root.file-actions[i] != "") {
+				root.open-menu = -1;
+				root.menu-item-clicked(root.file-actions[i]);
+			}
+		}
+		// 閉じたときに選択をリセットする
+		changed visible => { if (!self.visible) { root.menu-index = -1; } }
+
+		// hover 中の行の説明 (項目数と同じ長さの配列)
+		property <[string]> descriptions: [
+			"ログを書き出すフォルダを選びます。",
+			"今日のセッション一覧を CSV に書き出します。",
+			"",
+			"アプリケーションを終了します。",
+		];
+		out property <string> hover-status:
+			root.menu-index >= 0 && root.menu-index < descriptions.length
+				? descriptions[root.menu-index] : "";
+	}
+
+	task-popup := FluentMenuFrame {
+		visible: root.open-menu == 1;
+		x: task-button.absolute-position.x;
+		y: menu-bar.height - 1px;
+		width: max(task-popup.content-width, task-popup.layout-min-width);
+		height: task-popup.content-height;
+
+		items: root.task-items;
+		access-key-underline: root.menu-alt-held;
+		current-row <=> root.menu-index;
+		activated(i) => {
+			if (i >= 0 && root.task-actions[i] != "") {
+				root.open-menu = -1;
+				root.menu-item-clicked(root.task-actions[i]);
+			}
+		}
+		changed visible => { if (!self.visible) { root.menu-index = -1; } }
+
+		property <[string]> descriptions: [
+			"計測を開始します。",
+			"計測を停止して一覧に加えます。",
+			"",
+			"今日の一覧を空にします。",
+		];
+		out property <string> hover-status:
+			root.menu-index >= 0 && root.menu-index < descriptions.length
+				? descriptions[root.menu-index] : "";
+	}
+
+	help-popup := FluentMenuFrame {
+		visible: root.open-menu == 2;
+		x: help-button.absolute-position.x;
+		y: menu-bar.height - 1px;
+		width: max(help-popup.content-width, help-popup.layout-min-width);
+		height: help-popup.content-height;
+
+		items: root.help-items;
+		access-key-underline: root.menu-alt-held;
+		current-row <=> root.menu-index;
+		activated(i) => {
+			if (i >= 0 && root.help-actions[i] != "") {
+				root.open-menu = -1;
+				root.menu-item-clicked(root.help-actions[i]);
+			}
+		}
+		changed visible => { if (!self.visible) { root.menu-index = -1; } }
+
+		property <[string]> descriptions: [
+			"キーボード操作の一覧を表示します。",
+			"このサンプルについて表示します。",
+		];
+		out property <string> hover-status:
+			root.menu-index >= 0 && root.menu-index < descriptions.length
+				? descriptions[root.menu-index] : "";
+	}
+
+	// ---- 書き出しオプションのオーバーレイ (ウィンドウ内モーダル方式のときに使う) ----
+	if root.export-overlay-visible : Rectangle {
+		background: #00000066;   // 暗転
+		TouchArea { }            // 下への入力を吸う
+
+		Rectangle {
+			width: 320px;
+			height: 210px;
+			x: (parent.width - self.width) / 2;
+			y: (parent.height - self.height) / 2;
+			background: white;
+			border-radius: 6px;
+			drop-shadow-blur: 12px;
+			drop-shadow-color: #00000033;
+
+			VerticalLayout {
+				padding: 16px;
+				spacing: 10px;
+
+				Text { text: "CSV を書き出す (オーバーレイ方式)"; font-weight: 700; }
+
+				HorizontalLayout {
+					spacing: 6px;
+					Text { text: "区切り:"; vertical-alignment: center; }
+					ModeToggleButton {
+						text: "カンマ";
+						checked: root.export-comma;
+						clicked => { root.export-comma = true; }
+					}
+					ModeToggleButton {
+						text: "タブ";
+						checked: !root.export-comma;
+						clicked => { root.export-comma = false; }
+					}
+				}
+
+				HorizontalLayout {
+					spacing: 6px;
+					Rectangle {
+						width: 16px;
+						height: 16px;
+						CosmicCheckBox { checked: root.export-header; }
+						TouchArea { clicked => { root.export-header = !root.export-header; } }
+					}
+					Text { text: "ヘッダー行"; vertical-alignment: center; font-size: 0.9rem; }
+					Rectangle {
+						width: 16px;
+						height: 16px;
+						CosmicCheckBox { checked: root.export-bom; }
+						TouchArea { clicked => { root.export-bom = !root.export-bom; } }
+					}
+					Text { text: "BOM 付き"; vertical-alignment: center; font-size: 0.9rem; }
+				}
+
+				Rectangle { vertical-stretch: 1; }
+
+				HorizontalLayout {
+					spacing: 8px;
+					Rectangle { horizontal-stretch: 1; }
+					SmallButton { text: "書き出す"; primary: true; clicked => { root.export-ok(); } }
+					SmallButton { text: "キャンセル"; clicked => { root.export-cancel(); } }
+				}
+			}
+		}
+	}
+}

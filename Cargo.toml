@@ -1,6 +1,6 @@
 [package]
 name = "ergon-slint-controls"
-version = "0.3.42"
+version = "0.3.43"
 edition = "2021"
 links = "ergon-slint-controls"
 
@@ -39,6 +39,10 @@ x11rb = { version = "0.13", features = ["render", "image"] }
 # FileChooserDialog) をモーダルにブロック実行する。ビルドには libgtk-3-dev
 # (pkg-config の `gtk+-3.0`) が必要。
 gtk = "0.18"
+
+[dev-dependencies]
+# サンプル (examples/timekeeper.rs) が使うモーダル制御ライブラリ。
+modal-window = { path = "modal-window", features = ["force-child-window"] }
 
 [build-dependencies]
 # as_library() を使うには experimental-module-builds が必要。

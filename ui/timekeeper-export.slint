@@ -1,0 +1,77 @@
+// じかん君 (サンプル アプリ) の「CSV を書き出す」ダイアログ。
+// examples/timekeeper.rs が modal_window::open_child_modal で子ウィンドウとして
+// 表示する。OK / キャンセルの callback と値の in-out property だけを用意し、
+// 表示・Esc/Enter の読み替え・中央配置・破棄は modal_window が担う。
+
+import { SmallButton } from "small-button.slint";
+import { ModeToggleButton } from "mode-toggle.slint";
+import { CosmicCheckBox } from "cosmic-checkbox.slint";
+
+export component TimeKeeperExport inherits Window {
+	title: "CSV を書き出す";
+	preferred-width: 320px;
+	preferred-height: 180px;
+
+	// 値 (開くときに Rust が同期する)
+	in-out property <bool> comma: true;    // 区切り (true=カンマ, false=タブ)
+	in-out property <bool> header: true;   // ヘッダー行
+	in-out property <bool> bom: false;     // BOM 付き (Excel 向け)
+
+	callback ok();
+	callback cancel();
+
+	VerticalLayout {
+		padding: 14px;
+		spacing: 10px;
+
+		HorizontalLayout {
+			spacing: 6px;
+			Text { text: "区切り:"; vertical-alignment: center; }
+			ModeToggleButton {
+				text: "カンマ";
+				checked: root.comma;
+				clicked => { root.comma = true; }
+			}
+			ModeToggleButton {
+				text: "タブ";
+				checked: !root.comma;
+				clicked => { root.comma = false; }
+			}
+		}
+
+		HorizontalLayout {
+			spacing: 6px;
+			// 見た目だけのチェックボックス。クリック処理は TouchArea で自前実装。
+			Rectangle {
+				width: 16px;
+				height: 16px;
+				CosmicCheckBox { checked: root.header; }
+				TouchArea { clicked => { root.header = !root.header; } }
+			}
+			Text { text: "ヘッダー行"; vertical-alignment: center; font-size: 0.9rem; }
+			Rectangle {
+				width: 16px;
+				height: 16px;
+				CosmicCheckBox { checked: root.bom; }
+				TouchArea { clicked => { root.bom = !root.bom; } }
+			}
+			Text { text: "BOM 付き (Excel 向け)"; vertical-alignment: center; font-size: 0.9rem; }
+		}
+
+		Rectangle { vertical-stretch: 1; }
+
+		HorizontalLayout {
+			spacing: 8px;
+			Rectangle { horizontal-stretch: 1; }
+			SmallButton {
+				text: "書き出す";
+				primary: true;
+				clicked => { root.ok(); }
+			}
+			SmallButton {
+				text: "キャンセル";
+				clicked => { root.cancel(); }
+			}
+		}
+	}
+}
