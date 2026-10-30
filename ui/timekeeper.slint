@@ -334,6 +334,12 @@ export component TimeKeeperWindow inherits Window {
 	];
 	property <[string]> help-actions: [ "--help", "--about" ];
 
+	// ---- メニューの外側クリック捕捉 (ライブラリのレイヤ) ----
+	// ポップアップより手前 (先) に置く。バー領域は塞がない。
+	MenuDismissLayer {
+		top: menu-bar.height;
+	}
+
 	// ---- ドロップダウン (in-window オーバーレイとして自前描画) ----
 	file-popup := FluentMenuFrame {
 		visible: MenuOpenHub.open == 0;
@@ -478,11 +484,6 @@ export component TimeKeeperWindow inherits Window {
 		}
 	}
 
-	// ---- メニューの外側クリック捕捉 (ライブラリのレイヤ) ----
-	// メニューバーより下だけを覆うので、バー項目の hover / 開き替えは生きる。
-	MenuDismissLayer {
-		top: menu-bar.height;
-	}
 
 	// ---- メニュー項目の説明 (左下ポップアップ方式) ----
 	MenuHintPopup { }

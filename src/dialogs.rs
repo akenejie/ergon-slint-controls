@@ -356,6 +356,19 @@ fn dropping_stale_input<T>(dialog: impl FnOnce() -> T) -> T {
 // server-side grab) and under Xvfb (no WM).
 #[cfg(target_os = "linux")]
 pub fn show_message_box(title: &str, text: &str, kind: MessageIcon) {
+	// 1 フレーム遅らせてから表示する。GTK ダイアログはネストしたループで
+	// ブロックし、その間 slint ウィンドウは再描画されない。呼び出しと同ターン
+	// で表示すると「メニューを閉じた直後の描画」が行われないまま、閉じたはず
+	// のポップアップが残って見えるため。
+	let title = title.to_owned();
+	let text = text.to_owned();
+	slint::Timer::single_shot(std::time::Duration::from_millis(16), move || {
+		show_message_box_impl(&title, &text, kind);
+	});
+}
+
+#[cfg(target_os = "linux")]
+fn show_message_box_impl(title: &str, text: &str, kind: MessageIcon) {
 	// 同一プロセスの GTK 標準ダイアログ (モーダルにブロックする)。
 	if crate::gtk::gtk_ready() {
 		use gtk::prelude::*;
