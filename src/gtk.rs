@@ -184,16 +184,12 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 	let ping_off = std::env::var("NO_PING").is_ok();
 	let grab_off = std::env::var("NO_GRAB").is_ok();
 	let conn = x11rb::connect(None).ok().map(|(c, _)| c);
-	eprintln!("[gtk-dbg] conn={}", conn.is_some());
 	let parent = conn.as_ref().and_then(pick_parent_window);
-	eprintln!("[gtk-dbg] parent={parent:?}");
 	if !transient_off {
 		if let (Some(c), Some(p)) = (conn.as_ref(), parent) {
-			// GTK は realize 時にトップレベルの他に補助窓も作るため、新しく生えた
-			// X 窓すべてに transient を付ける (WM が管理するのはその中の 1 つ)。
-			let xids = realize_dialog_xids(dlg, c);
-			eprintln!("[gtk-dbg] xids={xids:?} (parent={p})");
-			for x in xids {
+			// マップ前にダイアログのトップレベル X 窓へ transient を付ける
+			// (WM が親基準で配置し、親より下に降ろせなくする)。
+			for x in realize_dialog_xids(dlg, c) {
 				set_transient_for(c, x, p);
 			}
 		}
