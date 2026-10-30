@@ -30,15 +30,19 @@ windows-sys = { version = "0.61", features = [
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # cursor::set_custom_cursor は X11 の Render 拡張で ARGB32 のカスタムカーソルを
-# 作る。gtk モジュール / dialogs も x11rb を使い、ダイアログの X 窓へ
-# WM_TRANSIENT_FOR を設定して親ウィンドウ基準のモーダル配置にする。winit 0.30 は
-# xlib_window を公開しないため、自プロセスのトップレベルウィンドウを x11rb 接続
-# から探して change_window_attributes で差し替える。
+# 積む。gtk モジュール / dialogs は x11rb を使い、ダイアログを X 窓レベルで
+# WM_TRANSIENT_FOR 設定して親ウィンドウ基準のモーダル配置にする。winit 0.30 は
+# xlib_window を公開しないため、同プロセスのトップレベルウィンドウを x11rb 接続
+# から探して change_window_attributes で張り替える。
 x11rb = { version = "0.13", features = ["render", "image"] }
-# gtk モジュール: 同一プロセス内の GTK 標準ダイアログ (MessageDialog /
+# gtk モジュール: 同一プロセスから GTK 標準ダイアログ (MessageDialog /
 # FileChooserDialog) をモーダルにブロック実行する。ビルドには libgtk-3-dev
-# (pkg-config の `gtk+-3.0`) が必要。
+# (pkg-config は `gtk+-3.0`) が必要。
 gtk = "0.18"
+# GTK の GdkWindow から X ウィンドウ ID (XID) を直接取得する。ダイアログの
+# transient 設定を root ツリーの差分検出に頼ると WM の reparent と競合して
+# 付け損ねるため、ここから確実に XID を取る。
+gdkx11 = "0.18"
 
 [dev-dependencies]
 # サンプル (examples/timekeeper.rs) が使うモーダル制御ライブラリ。
