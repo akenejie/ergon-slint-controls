@@ -12,11 +12,10 @@
 //! しか止められず、親の winit 窓 (別 X 接続の別アプリ扱い) には効かない。
 //!
 //! 配置 + モーダル: GTK に transient parent を渡せない (親が GtkWindow でない)
-//! ため、マップ前にダイアログの X 窓へ `WM_TRANSIENT_FOR` を直接設定する
-//! (`_NET_WM_PID` が付いた自分のトップレベル窓から親を選ぶが、GTK は realize
-//! 時に補助窓も作るので新しく生えた窓すべてに付ける)。これで WM が親の中央に
-//! 置き、`_NET_WM_STATE_MODAL` (set_modal 由来) と合わせて親をフォーカス/操作
-//! できないモーダルなペアとして扱う。
+//! ため、マップ前にダイアログの X 窓 (GDK から直接取得) へ `WM_TRANSIENT_FOR`
+//! を直接設定する。親窓は `_NET_WM_PID` の付いた自分のトップレベル窓から選ぶ。
+//! これで WM が親の中央に置き、`_NET_WM_STATE_MODAL` (set_modal 由来) と合わ
+//! せて親をフォーカス/操作できないモーダルなペアとして扱う。
 //!
 //! 応答なし対策: winit のイベントループは GTK の run() 中は回らないため、WM が
 //! 親窓へ送る `_NET_WM_PING` に応答できず「応答なし」と表示されうる。親窓の
@@ -50,31 +49,23 @@ fn intern(conn: &x11rb::rust_connection::RustConnection, name: &[u8]) -> Option<
 	conn.intern_atom(false, name).ok()?.reply().ok().map(|r| r.atom)
 }
 
-/// root の直接の子ウィンドウ id を列挙する。realize 直後 (未マップ) の
-/// ダイアログ X 窓は WM に reparent される前なので、差分で一意に拾える。
-fn root_children(conn: &x11rb::rust_connection::RustConnection) -> Vec<u32> {
-	use x11rb::connection::Connection;
-	use x11rb::protocol::xproto::ConnectionExt;
-	let root = conn.setup().roots[0].root;
-	conn.query_tree(root)
-		.ok()
-		.and_then(|c| c.reply().ok())
-		.map(|r| r.children)
-		.unwrap_or_default()
-}
-
-/// ダイアログを realize (X 窓生成、まだマップしない) し、新しく生えた X 窓 id を
-/// 返す。WM が親基準で配置できるよう、show (マップ) より前に transient を
-/// 付けたいので、ここで先に X 窓を得る。GTK は realize 時にトップレベルとは別に
-/// 補助の X 窓も作る (どれが WM に管理されるか事前には分からない) ため、新しく
-/// 生えた窓すべてに transient を付ける。
+/// ダイアログを realize (X 窓生成、まだマップしない) し、WM に管理される
+/// トップレベルの X 窓 id を返す。XID は GDK から直接取る。
+///
+/// かつては root 直下の子窓の差分 (realize 前後) で検出していたが、 realize と
+/// マップの間で WM が reparent を先に済ませると窓が root 直下から消え、検出
+/// できずに transient を付け損ねる。ダイアログを繰り返し表示すると WM 側の
+/// 処理が速くなり、3 回目あたりから「子ウィンドウではなくモードレスになる」
+/// 不具合の原因になった。GDK からの直接取得はこの競合がない。
 fn realize_dialog_xids(
 	dlg: &gtk::Dialog,
-	conn: &x11rb::rust_connection::RustConnection,
+	_conn: &x11rb::rust_connection::RustConnection,
 ) -> Vec<u32> {
-	let before = root_children(conn);
 	dlg.realize();
-	root_children(conn).into_iter().filter(|w| !before.contains(w)).collect()
+	dlg.window()
+		.and_then(|w| w.downcast_ref::<gdkx11::X11Window>().map(|x| x.xid() as u32))
+		.into_iter()
+		.collect()
 }
 
 /// ダイアログ窓が実際にマップされ Viewable になるまで (WM の reparent/マップを
@@ -193,12 +184,16 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 	let ping_off = std::env::var("NO_PING").is_ok();
 	let grab_off = std::env::var("NO_GRAB").is_ok();
 	let conn = x11rb::connect(None).ok().map(|(c, _)| c);
+	eprintln!("[gtk-dbg] conn={}", conn.is_some());
 	let parent = conn.as_ref().and_then(pick_parent_window);
+	eprintln!("[gtk-dbg] parent={parent:?}");
 	if !transient_off {
 		if let (Some(c), Some(p)) = (conn.as_ref(), parent) {
 			// GTK は realize 時にトップレベルの他に補助窓も作るため、新しく生えた
 			// X 窓すべてに transient を付ける (WM が管理するのはその中の 1 つ)。
-			for x in realize_dialog_xids(dlg, c) {
+			let xids = realize_dialog_xids(dlg, c);
+			eprintln!("[gtk-dbg] xids={xids:?} (parent={p})");
+			for x in xids {
 				set_transient_for(c, x, p);
 			}
 		}
