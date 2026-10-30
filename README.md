@@ -22,6 +22,9 @@ Windows 風の `&` アクセスキー」を 1 つのライブラリで揃える�
 cargo run --example timekeeper
 ```
 
+(サンプルはステータスバー方式。左下ポップアップ方式は `MenuHintPopup` を
+ウィンドウのルートに置く。)
+
 ---
 
 ## 参照方法の要点
@@ -110,11 +113,12 @@ Rust 側のキー発火も同じ 1 本の文字列から同じ関数で読むた
 | 部品 | 主なプロパティ / コールバック | 役割 |
 |---|---|---|
 | `FluentMenuBarImpl` | (子に `FluentMenuBarItem` を並べる) | メニューバー |
-| `FluentMenuBarItem` | `entry: MenuEntry` / `menu-open` / `access-key-underline` / `description` / `clicked()` / `hovered()` / `hover-description` | バー項目。`hovered` は「他のメニューが開いている間に hover されたら開き替える」用 |
-| `FluentMenuFrame` | `items: [MenuItemView]` / `current-row` / `access-key-underline` / `activated(int)` / `content-width` / `content-height` / `layout-min-width` | ドロップダウン本体 |
+| `FluentMenuBarItem` | `entry: MenuEntry` / `menu-open` / `access-key-underline` / `description` / `clicked()` / `hovered()` / `hover-description` | バー項目。`description` は hover 中に `MenuHintHub` へ報告される |
+| `FluentMenuFrame` | `items: [MenuItemView]` / `current-row` / `descriptions: [string]` / `access-key-underline` / `activated(int)` / `content-width` / `content-height` / `layout-min-width` | ドロップダウン本体。`descriptions` は行ごとの説明 (hover / キーボード選択中の行が `MenuHintHub` へ報告される) |
 | `MenuItemView` | `entry: MenuEntry` / `shortcut-text: string` | 項目 1 行分 |
 | `MenuEntry` | `title` / `shortcut` / `checkable` / `checked` / `enabled` / `is-separator` | 項目データ。`&` 記法は `title` に書く |
 | `AccessKeyLabel` | `text` / `underline` / `color` / `font-size` / `font-weight` / `horizontal-alignment` / `plain-text` | `&` 記法を解釈するテキストの素 |
+| `MenuHintPopup` | (配置するだけ) | メニュー項目の説明を出す左下ポップアップ (後述) |
 
 ドロップダウンは標準 `MenuBar` と違い **アプリが配置する in-window オーバーレイ**:
 
@@ -156,6 +160,41 @@ examples/timekeeper.rs のキー処理 (Alt+文字で開閉、ArrowUp/Down、Ent
 |---|---|---|
 | `MenuAccessKey` | `pure callback parse(title) -> AccessKeyParts` | 描画側の `&` 記法解釈。**アプリは `on_parse` で Rust 実装へ差し込む (必須)** |
 | `AccessKeyHub` | `press(key: string)` / `pressed` | ラベルのアクセスキー通知ハブ |
+| `MenuHintHub` | `text` / `frame-text` / `bar-text` | メニュー項目の説明 (ツールチップ) を集めるハブ (後述) |
+
+### メニュー項目の説明 (ツールチップ)
+
+メニューの項目に説明を付けると、hover またはキーボード選択中にその説明が
+`MenuHintHub.text` に集まる。バー項目は `description` プロパティ、ドロップ
+ダウンは `descriptions` プロパティ (行ごとの配列) で渡す:
+
+```slint
+file-button := FluentMenuBarItem {
+    entry: { title: root.file-menu-title };
+    description: "CSV の読み込みや出力を行います。";   // hover 中にハブへ報告
+    ...
+}
+file-popup := FluentMenuFrame {
+    items: root.file-items;
+    descriptions: [ "フォルダを選びます。", "CSV に書き出します。", "", "終了します。" ];
+    ...
+}
+```
+
+**出力先は選べる**:
+
+```slint
+// (a) ステータスバーのあるアプリ: 自分のステータス行に束ねる
+//     (見た目はアプリ固有なのでライブラリは描かない)
+Text { text: MenuHintHub.text != "" ? MenuHintHub.text : root.own-hint; }
+
+// (b) ステータスバーのないアプリ: 左下ポップアップ (ウィンドウのルートの
+//     最後に置く。hover 中だけ浮かぶ)
+MenuHintPopup { }
+```
+
+優先順位は「開いているドロップダウンの項目の説明 > バー項目の説明」
+(メニューを開いている間は項目の説明、閉じている間はボタンの説明が出る)。
 
 ---
 

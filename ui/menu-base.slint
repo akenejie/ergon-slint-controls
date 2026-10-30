@@ -29,6 +29,22 @@ export global AccessKeyHub {
 	}
 }
 
+// メニュー項目の説明 (ツールチップ) を集めるハブ。バー項目とドロップダウン
+// が報告し、呼び出し側が出力先を選ぶ:
+// - 左下ポップアップで出すなら MenuHintPopup を置く
+// - ステータスバーで出すなら自分のステータス行の text に .text を束ねる
+//   (ステータスバーの見た目はアプリ固有なのでライブラリは描かない)
+export global MenuHintHub {
+	// ドロップダウン (FluentMenuFrame) が報告する説明。メニューを開いている
+	// 間の hover / キーボード選択行のもの。
+	in-out property <string> frame-text: "";
+	// バー項目 (FluentMenuBarItem) が報告する説明。メニューを開いたボタン。
+	in-out property <string> bar-text: "";
+	// 表示すべき説明。ドロップダウン項目を優先する (メニューを開いている間は
+	// 項目の説明、閉じている間はボタンの説明が出る)。空 = 表示すべきなし。
+	out property <string> text: frame-text != "" ? frame-text : bar-text;
+}
+
 // Windows 風のメニューラベル。タイトル中の "&X" をアクセスキー (underline が
 // true の間は下線) として、"&&" をリテラルの & として描画する。
 export component AccessKeyLabel inherits HorizontalLayout {

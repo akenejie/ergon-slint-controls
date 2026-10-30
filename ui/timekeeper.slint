@@ -7,7 +7,7 @@
 // クレート内のサンプルでは同じコンパイル単位にするため各 ui ファイルから
 // 直接 import している。API の形は同じ。
 
-import { MenuAccessKey, AccessKeyHub, AccessKeyLabel } from "menu-base.slint";
+import { MenuAccessKey, AccessKeyHub, MenuHintHub, AccessKeyLabel } from "menu-base.slint";
 import { FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView } from "menu.slint";
 import { Label } from "label.slint";
 import { SmallButton } from "small-button.slint";
@@ -57,7 +57,11 @@ export component TimeKeeperWindow inherits Window {
 	in-out property <int> break-minutes: 5;
 	in-out property <bool> break-reminder: true;
 	in-out property <[SessionEntry]> sessions: [];   // 今日のセッション一覧
-	in-out property <string> hint-text;           // メニュー項目の説明など
+	in-out property <string> hint-text;           // アプリ側のヒント (計測開始など)
+
+	// 説明行 (ステータスバー方式)。メニュー項目の説明 (MenuHintHub.text) を
+	// 優先し、なければアプリ側のヒントを出す。
+	in-out property <string> hint-line: MenuHintHub.text != "" ? MenuHintHub.text : root.hint-text;
 
 	// CSV 書き出しのオプション (オーバーレイ パネルが直接バインドし、
 	// 子ウィンドウ方式は Rust が開くときに同期する)。
@@ -107,14 +111,6 @@ export component TimeKeeperWindow inherits Window {
 		}
 	}
 
-	// hover 中のメニュー項目の説明 (各ポップアップの hover-status を集約)。
-	// メニューを開いていないときは Rust 側が設定する hint-text を出す。
-	in-out property <string> menu-hint:
-		root.open-menu == 0 ? file-popup.hover-status
-		: root.open-menu == 1 ? task-popup.hover-status
-		: root.open-menu == 2 ? help-popup.hover-status
-		: "";
-
 	// ---- 本体 ----
 	VerticalLayout {
 		x: 0;
@@ -122,7 +118,7 @@ export component TimeKeeperWindow inherits Window {
 		width: root.width;
 		height: root.height - menu-bar.height;
 
-		// メニュー項目の説明行
+		// メニュー項目の説明行 (ステータスバー方式: MenuHintHub.text を束ねる)
 		Rectangle {
 			height: 20px;
 			Text {
@@ -130,7 +126,7 @@ export component TimeKeeperWindow inherits Window {
 				vertical-alignment: center;
 				font-size: 0.8rem;
 				color: #999;
-				text: root.menu-hint == "" ? root.hint-text : root.menu-hint;
+				text: root.hint-line;
 			}
 		}
 
@@ -362,16 +358,12 @@ export component TimeKeeperWindow inherits Window {
 		// 閉じたときに選択をリセットする
 		changed visible => { if (!self.visible) { root.menu-index = -1; } }
 
-		// hover 中の行の説明 (項目数と同じ長さの配列)
-		property <[string]> descriptions: [
+		descriptions: [
 			"ログを書き出すフォルダを選びます。",
 			"今日のセッション一覧を CSV に書き出します。",
 			"",
 			"アプリケーションを終了します。",
 		];
-		out property <string> hover-status:
-			root.menu-index >= 0 && root.menu-index < descriptions.length
-				? descriptions[root.menu-index] : "";
 	}
 
 	task-popup := FluentMenuFrame {
@@ -392,15 +384,12 @@ export component TimeKeeperWindow inherits Window {
 		}
 		changed visible => { if (!self.visible) { root.menu-index = -1; } }
 
-		property <[string]> descriptions: [
+		descriptions: [
 			"計測を開始します。",
 			"計測を停止して一覧に加えます。",
 			"",
 			"今日の一覧を空にします。",
 		];
-		out property <string> hover-status:
-			root.menu-index >= 0 && root.menu-index < descriptions.length
-				? descriptions[root.menu-index] : "";
 	}
 
 	help-popup := FluentMenuFrame {
@@ -421,13 +410,10 @@ export component TimeKeeperWindow inherits Window {
 		}
 		changed visible => { if (!self.visible) { root.menu-index = -1; } }
 
-		property <[string]> descriptions: [
+		descriptions: [
 			"キーボード操作の一覧を表示します。",
 			"このサンプルについて表示します。",
 		];
-		out property <string> hover-status:
-			root.menu-index >= 0 && root.menu-index < descriptions.length
-				? descriptions[root.menu-index] : "";
 	}
 
 	// ---- 書き出しオプションのオーバーレイ (ウィンドウ内モーダル方式のときに使う) ----

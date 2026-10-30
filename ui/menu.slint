@@ -10,10 +10,11 @@
 // Only the light color-scheme values are used here, matching the rest of the
 // application's fixed colors.
 
-import { MenuBarItemBase, MenuBarBase, MenuFrameBase, MenuItemBase } from "menu-base.slint";
+import { MenuBarItemBase, MenuBarBase, MenuFrameBase, MenuItemBase, MenuHintHub } from "menu-base.slint";
 
 /// Top-level menu bar button. Exposes the hover state and a description that
-/// the application shows in its bottom status line.
+/// the application shows in its bottom status line. The description is also
+/// reported to `MenuHintHub` while the button is hovered.
 export component FluentMenuBarItem {
 	in property <MenuEntry> entry;
 	in property <string> description;
@@ -25,6 +26,12 @@ export component FluentMenuBarItem {
 	callback hovered;
 
 	out property <string> hover-description: base.has-hover ? root.description : "";
+
+	// hover の変化を MenuHintHub へ報告する (説明の出力先は呼び出し側が選ぶ)。
+	property <bool> reported-hover: base.has-hover;
+	changed reported-hover => {
+		MenuHintHub.bar-text = self.reported-hover ? root.description : "";
+	}
 
 	min-width: base.min-width;
 	min-height: base.min-height;
@@ -158,10 +165,22 @@ export component FluentMenuFrame inherits MenuFrameBase {
 	in property <[MenuItemView]> items;
 	// 現在ハイライト中の行 (呼び出し側のキー操作と共有するため in-out)。
 	in-out property <int> current-row: -1;
+	// 行ごとの説明。hover / キーボード選択中の行のものが MenuHintHub へ報告
+	// される (空 = 説明なし)。
+	in property <[string]> descriptions;
 	// 項目の下線文字 (Alt 押下中表示)。全項目共通。
 	in property <bool> access-key-underline: false;
 	// 有効行が選択された (row はモデル index)。
 	callback activated(int);
+
+	// 現在の行の説明を MenuHintHub へ報告する。
+	function report-hint() {
+		MenuHintHub.frame-text = self.visible
+			&& root.current-row >= 0 && root.current-row < descriptions.length
+			? descriptions[root.current-row] : "";
+	}
+	changed current-row => { report-hint(); }
+	changed visible => { report-hint(); }
 
 	for it[i] in root.items : FluentMenuItem {
 		entry: it.entry;
@@ -171,5 +190,44 @@ export component FluentMenuFrame inherits MenuFrameBase {
 		set-current => { root.current-row = i; }
 		clear-current => { root.current-row = -1; }
 		activated => { root.activated(i); }
+	}
+}
+
+/// メニュー項目の説明を出す左下ポップアップ。ウィンドウのルートに置くと、
+/// hover / キーボード選択中の項目の説明が左下に浮かぶ (ステータスバーのない
+/// アプリ向け。ステータスバーのあるアプリは MenuHintHub.text を自分の
+/// ステータス行に束ねる)。ウィンドウ全体を覆う透明レイヤとして実装してある
+/// ため、他の要素を覆い隠さないようウィンドウのルートの最後に置くこと
+/// (レイヤ自体は TouchArea を持たないのでクリックは下へ通る)。
+export component MenuHintPopup inherits Rectangle {
+	x: 0;
+	y: 0;
+	width: 100%;
+	height: 100%;
+	visible: MenuHintHub.text != "";
+
+	Rectangle {
+		x: 3px;
+		y: parent.height - self.height - 3px;
+		width: hint.preferred-width + 8px;
+		height: hint.preferred-height + 4px;
+		background: #ffffff;
+		border-color: #00000040;
+		border-width: 0.5px;
+		border-radius: 3px;
+		drop-shadow-color: #00000033;
+		drop-shadow-offset-y: 1px;
+		drop-shadow-blur: 2px;
+
+		hint := Text {
+			x: 4px;
+			y: 2px;
+			width: self.preferred-width;
+			height: self.preferred-height;
+			text: MenuHintHub.text;
+			font-size: 1rem;
+			color: #202020;
+			vertical-alignment: center;
+		}
 	}
 }
