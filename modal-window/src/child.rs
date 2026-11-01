@@ -165,9 +165,16 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		#[cfg(target_os = "linux")]
 		{
 			if let Some(child_xid) = cw.xlib_window() {
-				ergon_slint_controls::gtk::activate_window(child_xid as u32);
+				let xid = child_xid as u32;
+				ergon_slint_controls::gtk::activate_window(xid);
 				// (診断) ERGON_MODAL_DEBUG=1 で X プロパティを記録する。
-				ergon_slint_controls::gtk::debug_dump_dialog_props(child_xid as u32);
+				// 1 回目はマップ直後 (WM の処理前)、2 回目はマップ完了後
+				// (WM が状態を書き換えた後) — 両方を見ないと WM に届いた
+				// 最終状態が分からない。
+				ergon_slint_controls::gtk::debug_dump_dialog_props(xid);
+				slint::Timer::single_shot(std::time::Duration::from_millis(500), move || {
+					ergon_slint_controls::gtk::debug_dump_dialog_props(xid);
+				});
 			}
 		}
 	}
