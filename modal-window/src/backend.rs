@@ -162,6 +162,10 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 	// 親基準) に任せる。テーマは生成後に child.rs が set_theme する (slint
 	// バックエンドが生成直後にホストのカラースキームを流し込むため、生成時
 	// 属性では上書きされてしまう)。
+	// また X11 では非表示 (with_visible(false)) で生成する: transient / modal
+	// ヒントを **マップ前に** 付けるため。マップ後にヒントを付けると WM は
+	// transient 無しの配置 (スマート配置 / 前回からのカスケード) を先に決め
+	// てしまい、Ubuntu (Mutter) で 2 回目以降の表示位置が親基準からずれる。
 	#[cfg(all(unix, not(target_os = "macos")))]
 	{
 		use slint::winit_030::winit::platform::x11::{WindowAttributesExtX11, WindowType};
@@ -173,7 +177,9 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 					NEXT_CHILD_THEME.store(0, std::sync::atomic::Ordering::Relaxed);
 					attrs
 				} else {
-					attrs.with_x11_window_type(vec![WindowType::Dialog])
+					attrs
+						.with_x11_window_type(vec![WindowType::Dialog])
+						.with_visible(false)
 				}
 			})
 			.build()?;

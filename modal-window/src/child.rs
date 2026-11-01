@@ -145,13 +145,18 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 	child.with_winit_window(|cw| {
 		cw.set_resizable(false);
 		cw.set_enabled_buttons(WindowButtons::CLOSE);
-		#[cfg(all(feature = "winit-modal-hints", unix, not(target_os = "macos")))]
-		{
-			if let Some(xid) = parent_xid {
-				cw.set_transient_for(Some(xid));
-				cw.set_modal(true);
-			}
+	#[cfg(all(feature = "winit-modal-hints", unix, not(target_os = "macos")))]
+	{
+		if let Some(xid) = parent_xid {
+			cw.set_transient_for(Some(xid));
+			cw.set_modal(true);
 		}
+		// 非表示で生成した子ダイアログを、ここで transient / modal ヒントを
+		// 付けた後にマップする。WM は transient ありの状態で配置を決めるので
+		// 親基準の位置に置かれる (Ubuntu の Mutter で 2 回目以降の表示位置が
+		// ずれる問題の修正)。
+		cw.set_visible(true);
+	}
 	});
 	// 位置は座標指定せずウィンドウ マネージャに任せる。transient_for 付きの
 	// ウィンドウを親基準に配置するのは Linux の流儀 (多くのディストリビューション
