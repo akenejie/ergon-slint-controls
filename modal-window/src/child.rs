@@ -164,6 +164,8 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 			use slint::winit_030::winit::platform::x11::WindowExtX11;
 			if let Some(child_xid) = cw.xlib_window() {
 				ergon_slint_controls::gtk::activate_window(child_xid as u32);
+				// (診断) ERGON_MODAL_DEBUG=1 で X プロパティを記録する。
+				ergon_slint_controls::gtk::debug_dump_dialog_props(child_xid as u32);
 			}
 		}
 	}
