@@ -147,32 +147,25 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		cw.set_enabled_buttons(WindowButtons::CLOSE);
 	#[cfg(all(feature = "winit-modal-hints", unix, not(target_os = "macos")))]
 	{
+		// transient はマップ前に付ける (WM が親基準で配置を決める)。
 		if let Some(xid) = parent_xid {
 			cw.set_transient_for(Some(xid));
-			cw.set_modal(true);
 		}
-		// set_modal は EWMH の ClientMessage で、ウィンドウが WM に管理された
-		// (マップされた) 後でなければ無視される。マップ前に modal 状態を伝え
-		// ないと、WM は「transient だが modal でない窓」としてスマート配置
-		// (画面基準) を決めてしまい、Ubuntu (Mutter) で 2 回目以降の表示位置
-		// が親基準からずれる。_NET_WM_STATE プロパティを直接書く (WM は
-		// マップ時に読んでくれる)。
+		// 非表示で生成した子ダイアログをここでマップする。
+		cw.set_visible(true);
+		// modal 状態とアクティブ化はマップ後に伝える。EWMH の ClientMessage
+		// は WM が窓を管理した (マップした) 後でなければ無視される。X サー
+		// バーは要求を到着順に処理するので、MapWindow の後に送った
+		// ClientMessage は確実に管理開始後へ届く (マップ前に送ると Mutter で
+		// modal 状態が伝わらず、2 回目以降の配置が画面基準になっていた)。
+		cw.set_modal(true);
 		#[cfg(target_os = "linux")]
 		{
 			use slint::winit_030::winit::platform::x11::WindowExtX11;
 			if let Some(child_xid) = cw.xlib_window() {
-				ergon_slint_controls::gtk::set_net_wm_state_modal(child_xid as u32);
+				ergon_slint_controls::gtk::activate_window(child_xid as u32);
 			}
 		}
-		// 非表示で生成した子ダイアログを、ここで transient / modal ヒントを
-		// 付けた後にマップする。WM は transient ありの状態で配置を決めるので
-		// 親基準の位置に置かれる (Ubuntu の Mutter で 2 回目以降の表示位置が
-		// ずれる問題の修正)。
-		cw.set_visible(true);
-		// マップしたらアクティブにする (フォーカスの付与は WM のフォーカス
-		// 盗み取り防止次第だが、要求しておかないと 2 回目以降親にフォーカスが
-		// 残る)。
-		cw.focus_window();
 	}
 	});
 	// 位置は座標指定せずウィンドウ マネージャに任せる。transient_for 付きの
