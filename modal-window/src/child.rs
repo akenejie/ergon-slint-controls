@@ -147,21 +147,23 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		cw.set_enabled_buttons(WindowButtons::CLOSE);
 	#[cfg(all(feature = "winit-modal-hints", unix, not(target_os = "macos")))]
 	{
-		// transient はマップ前に付ける (WM が親基準で配置を決める)。
+		// transient / modal は**マップ前に**付ける。WM は管理開始 (マップ) 時
+		// にこれらを読み、親基準の配置とモーダル扱いを決める。
+		// - transient は WM_TRANSIENT_FOR プロパティ (マップ前 OK)
+		// - modal はフォークの set_modal が _NET_WM_STATE プロパティにも書く
+		//   (EWMH の ClientMessage はマップ前だと WM に無視されるため。
+		//    プロパティ経由ならマップ前に確実に伝わる)
+		// マップ後にWM が状態プロパティを書き換えるのと競合しないよう、
+		// すべてのヒントは set_visible の前に済ませる。
 		if let Some(xid) = parent_xid {
 			cw.set_transient_for(Some(xid));
 		}
+		cw.set_modal(true);
 		// 非表示で生成した子ダイアログをここでマップする。
 		cw.set_visible(true);
-		// modal 状態とアクティブ化はマップ後に伝える。EWMH の ClientMessage
-		// は WM が窓を管理した (マップした) 後でなければ無視される。X サー
-		// バーは要求を到着順に処理するので、MapWindow の後に送った
-		// ClientMessage は確実に管理開始後へ届く (マップ前に送ると Mutter で
-		// modal 状態が伝わらず、2 回目以降の配置が画面基準になっていた)。
-		cw.set_modal(true);
+		// アクティブ化はマップ後 (WM が管理してから) に要求する。
 		#[cfg(target_os = "linux")]
 		{
-			use slint::winit_030::winit::platform::x11::WindowExtX11;
 			if let Some(child_xid) = cw.xlib_window() {
 				ergon_slint_controls::gtk::activate_window(child_xid as u32);
 				// (診断) ERGON_MODAL_DEBUG=1 で X プロパティを記録する。
