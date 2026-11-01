@@ -116,6 +116,69 @@ pub fn activate_window(win: u32) {
 	let _ = conn.flush();
 }
 
+/// (診断) ダイアログ窓の WM プロパティとマップ状態を標準エラーへ出力する。
+/// `ERGON_MODAL_DEBUG=1` のときのみ出力する。
+pub fn debug_dump_dialog_props(win: u32) {
+	use x11rb::connection::Connection as _;
+	use x11rb::protocol::xproto::AtomEnum;
+	use x11rb::protocol::xproto::ConnectionExt as _;
+	use x11rb::protocol::xproto::MapState;
+	if std::env::var("ERGON_MODAL_DEBUG").is_err() {
+		return;
+	}
+	let Ok((conn, screen)) = x11rb::connect(None) else { return };
+	let read_atoms = |prop: u32| -> Vec<String> {
+		let Ok(r) = conn.get_property(false, win, prop, AtomEnum::ATOM, 0, 1024)
+			else { return vec![] };
+		let Ok(r) = r.reply() else { return vec![] };
+		r.value32()
+			.map(|it| {
+				it.map(|a| {
+					conn.get_atom_name(a)
+						.ok()
+						.and_then(|c| c.reply().ok())
+						.map(|n| String::from_utf8_lossy(&n.name).into_owned())
+						.unwrap_or_else(|| format!("{a}"))
+				})
+				.collect()
+			})
+			.unwrap_or_default()
+	};
+	let dump = |name: &str, values: &[String]| {
+		eprintln!("[modal-dbg] {name}: [{}]", values.join(", "));
+	};
+	let atom = |name: &[u8]| -> Option<u32> { intern(&conn, name) };
+	if let Some(p) = atom(b"WM_TRANSIENT_FOR") {
+		let v: Vec<u32> = conn
+			.get_property(false, win, p, AtomEnum::WINDOW, 0, 8)
+			.ok()
+			.and_then(|c| c.reply().ok())
+			.and_then(|r| r.value32().map(|it| it.collect()))
+			.unwrap_or_default();
+		eprintln!("[modal-dbg] WM_TRANSIENT_FOR: {:?}", v);
+	}
+	if let Some(p) = atom(b"_NET_WM_STATE") {
+		dump("_NET_WM_STATE", &read_atoms(p));
+	}
+	if let Some(p) = atom(b"_NET_WM_WINDOW_TYPE") {
+		dump("_NET_WM_WINDOW_TYPE", &read_atoms(p));
+	}
+	let attrs = conn.get_window_attributes(win);
+	if let Ok(cookie) = attrs {
+		if let Ok(rep) = cookie.reply() {
+			eprintln!(
+				"[modal-dbg] map_state={:?}",
+				match rep.map_state {
+					MapState::UNMAPPED => "Unmapped",
+					MapState::UNVIEWABLE => "Unviewable",
+					MapState::VIEWABLE => "Viewable",
+					_ => "?",
+				}
+			);
+		}
+	}
+}
+
 /// 親 (winit メイン窓) を選ぶ。GTK のリーダー窓は `_NET_WM_PID` を持つため
 /// `linux_own_windows` に含まれてしまうが、未マップの InputOnly 窓なので、
 /// 表示中 (Viewable) の窓を優先して選ぶ。見つからなければ先頭にフォールバック
