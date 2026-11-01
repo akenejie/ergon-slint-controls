@@ -97,22 +97,21 @@ fn set_transient_for(conn: &x11rb::rust_connection::RustConnection, dialog: u32,
 	}
 }
 
-/// X ウィンドウの `_NET_WM_STATE` プロパティへ `_NET_WM_STATE_MODAL` を直接
-/// 書く。
+/// X ウィンドウをアクティブにする (`_NET_ACTIVE_WINDOW` ClientMessage)。
 ///
-/// modal 状態の伝え方には 2 通りあり、EWMH の ClientMessage
-/// (`_NET_WM_STATE`) は**ウィンドウが WM に管理された (マップされた) 後で
-/// なければ WM に無視される**。マップ前のウィンドウに modal 状態を伝えるに
-/// は、このプロパティを直接書く (WM はマップ時に読んでくれる)。
-pub fn set_net_wm_state_modal(win: u32) {
+/// ウィンドウが WM に管理された (マップされた) 後に呼ぶこと。マップ前に
+/// 送ると WM に無視される。
+pub fn activate_window(win: u32) {
 	use x11rb::connection::Connection as _;
-	use x11rb::protocol::xproto::{AtomEnum, PropMode};
-	use x11rb::wrapper::ConnectionExt as _;
+	use x11rb::protocol::xproto::ClientMessageEvent;
+	use x11rb::protocol::xproto::ConnectionExt as _;
+	use x11rb::protocol::xproto::EventMask;
 	let Ok((conn, _)) = x11rb::connect(None) else { return };
-	let Some(state) = intern(&conn, b"_NET_WM_STATE") else { return };
-	let Some(modal) = intern(&conn, b"_NET_WM_STATE_MODAL") else { return };
+	let Some(state) = intern(&conn, b"_NET_ACTIVE_WINDOW") else { return };
+	let root = conn.setup().roots[0].root;
+	let event = ClientMessageEvent::new(32, win, state, [1, 0, 0, 0, 0]).to_owned();
 	let _ = conn
-		.change_property32(PropMode::REPLACE, win, state, AtomEnum::ATOM, &[modal])
+		.send_event(false, root, EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY, event)
 		.map(|c| c.ignore_error());
 	let _ = conn.flush();
 }
