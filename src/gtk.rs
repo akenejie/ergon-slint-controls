@@ -119,14 +119,13 @@ pub fn activate_window(win: u32) {
 /// (診断) ダイアログ窓の WM プロパティとマップ状態を標準エラーへ出力する。
 /// `ERGON_MODAL_DEBUG=1` のときのみ出力する。
 pub fn debug_dump_dialog_props(win: u32) {
-	use x11rb::connection::Connection as _;
 	use x11rb::protocol::xproto::AtomEnum;
 	use x11rb::protocol::xproto::ConnectionExt as _;
 	use x11rb::protocol::xproto::MapState;
 	if std::env::var("ERGON_MODAL_DEBUG").is_err() {
 		return;
 	}
-	let Ok((conn, screen)) = x11rb::connect(None) else { return };
+	let Ok((conn, _screen)) = x11rb::connect(None) else { return };
 	let read_atoms = |prop: u32| -> Vec<String> {
 		let Ok(r) = conn.get_property(false, win, prop, AtomEnum::ATOM, 0, 1024)
 			else { return vec![] };
