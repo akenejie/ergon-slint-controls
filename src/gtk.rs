@@ -119,6 +119,7 @@ pub fn activate_window(win: u32) {
 /// (診断) ダイアログ窓の WM プロパティとマップ状態を標準エラーへ出力する。
 /// `ERGON_MODAL_DEBUG=1` のときのみ出力する。
 pub fn debug_dump_dialog_props(win: u32) {
+	use x11rb::connection::Connection as _;
 	use x11rb::protocol::xproto::AtomEnum;
 	use x11rb::protocol::xproto::ConnectionExt as _;
 	use x11rb::protocol::xproto::MapState;
@@ -174,6 +175,22 @@ pub fn debug_dump_dialog_props(win: u32) {
 					_ => "?",
 				}
 			);
+		}
+	}
+	// 絶対位置 (ルート基準)。WM の配置結果の確認用。
+	let root = conn.setup().roots[0].root;
+	let geom = conn.get_geometry(win);
+	let tr = conn.translate_coordinates(win, root, 0, 0);
+	if let Ok(g) = geom {
+		if let Ok(g) = g.reply() {
+			if let Ok(t) = tr {
+				if let Ok(t) = t.reply() {
+					eprintln!(
+						"[modal-dbg] geometry: {}x{} at root {},{}",
+						g.width, g.height, t.dst_x, t.dst_y
+					);
+				}
+			}
 		}
 	}
 }
