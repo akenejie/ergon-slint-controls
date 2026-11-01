@@ -97,6 +97,26 @@ fn set_transient_for(conn: &x11rb::rust_connection::RustConnection, dialog: u32,
 	}
 }
 
+/// X ウィンドウの `_NET_WM_STATE` プロパティへ `_NET_WM_STATE_MODAL` を直接
+/// 書く。
+///
+/// modal 状態の伝え方には 2 通りあり、EWMH の ClientMessage
+/// (`_NET_WM_STATE`) は**ウィンドウが WM に管理された (マップされた) 後で
+/// なければ WM に無視される**。マップ前のウィンドウに modal 状態を伝えるに
+/// は、このプロパティを直接書く (WM はマップ時に読んでくれる)。
+pub fn set_net_wm_state_modal(win: u32) {
+	use x11rb::connection::Connection as _;
+	use x11rb::protocol::xproto::{AtomEnum, PropMode};
+	use x11rb::wrapper::ConnectionExt as _;
+	let Ok((conn, _)) = x11rb::connect(None) else { return };
+	let Some(state) = intern(&conn, b"_NET_WM_STATE") else { return };
+	let Some(modal) = intern(&conn, b"_NET_WM_STATE_MODAL") else { return };
+	let _ = conn
+		.change_property32(PropMode::REPLACE, win, state, AtomEnum::ATOM, &[modal])
+		.map(|c| c.ignore_error());
+	let _ = conn.flush();
+}
+
 /// 親 (winit メイン窓) を選ぶ。GTK のリーダー窓は `_NET_WM_PID` を持つため
 /// `linux_own_windows` に含まれてしまうが、未マップの InputOnly 窓なので、
 /// 表示中 (Viewable) の窓を優先して選ぶ。見つからなければ先頭にフォールバック
