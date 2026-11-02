@@ -128,8 +128,9 @@ pub fn dismiss_modal_dialog(parent: &slint::Window) {
 // set_transient_for / set_modal を使う (フォークは本クレートの必須要件)。
 #[cfg(not(windows))]
 pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
-	use slint::winit_030::winit::window::WindowButtons;
-	use slint::winit_030::WinitWindowAccessor;
+use slint::winit_030::winit::dpi::PhysicalPosition;
+use slint::winit_030::winit::window::WindowButtons;
+use slint::winit_030::WinitWindowAccessor;
 	// 固定サイズ + 閉じるボタンだけ、をウィンドウ マネージャへ要求する。
 	// X11 の set_resizable(false) は MWM ヒント (最大化不可・min=max) を設定する。
 	//
@@ -159,31 +160,39 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 			cw.set_transient_for(Some(xid));
 		}
 		cw.set_modal(true);
-		// 非表示で生成した子ダイアログをここでマップする。
-		cw.set_visible(true);
-		// アクティブ化はマップ後 (WM が管理してから) に要求する。
+		// 位置とアクティブ化の調整は Linux ではライブラリが行う:
+		// - Mutter は transient ダイアログの親基準配置を 2 回目以降行わない
+		//   ことがある (同じヒントでも 1 回目だけ親中央になり、以降は画面中
+		//   央に出る)。そこでマップ前に親中央へ位置を指定する。マップ前の指
+		//   定なのでちらつきはなく、WM は表示後に位置を調整できる。
+		// - アクティブ化 (_NET_ACTIVE_WINDOW) は WM が窓を管理した後でないと
+		//   無視されるため、マップ完了後に要求する。
 		#[cfg(target_os = "linux")]
 		{
-			if let Some(child_xid) = cw.xlib_window() {
-				let xid = child_xid as u32;
-				ergon_slint_controls::gtk::activate_window(xid);
-				// (診断) ERGON_MODAL_DEBUG=1 で X プロパティを記録する。
-				// 1 回目はマップ直後 (WM の処理前)、2 回目はマップ完了後
-				// (WM が状態を書き換えた後) — 両方を見ないと WM に届いた
-				// 最終状態が分からない。
-				ergon_slint_controls::gtk::debug_dump_dialog_props(xid);
-				slint::Timer::single_shot(std::time::Duration::from_millis(500), move || {
+			if let Some(parent) = parent_xid {
+				if let Some((cx, cy)) = ergon_slint_controls::gtk::parent_center(parent) {
+					let s = cw.inner_size();
+					cw.set_outer_position(PhysicalPosition::new(
+						cx - s.width as i32 / 2,
+						cy - s.height as i32 / 2,
+					));
+				}
+				if let Some(xid) = cw.xlib_window() {
+					let xid = xid as u32;
+					// (診断) マップ直前の状態を記録する。
 					ergon_slint_controls::gtk::debug_dump_dialog_props(xid);
-				});
+					slint::Timer::single_shot(std::time::Duration::from_millis(300), move || {
+						ergon_slint_controls::gtk::activate_window(xid);
+						// (診断) マップ完了後 (WM の処理後) の状態を記録する。
+						ergon_slint_controls::gtk::debug_dump_dialog_props(xid);
+					});
+				}
 			}
 		}
+		// 非表示で生成した子ダイアログをここでマップする。
+		cw.set_visible(true);
 	}
 	});
-	// 位置は座標指定せずウィンドウ マネージャに任せる。transient_for 付きの
-	// ウィンドウを親基準に配置するのは Linux の流儀 (多くのディストリビューション
-	// の WM が自動で親の中央/近傍に置く)。生成後の座標指定移動は、WM が決めた
-	// 配置を上書きする OS のルール逸脱で、Ubuntu 実機ではちらつきとして観測
-	// された。
 	ergon_slint_controls::dialogs::dialog_push();
 }
 

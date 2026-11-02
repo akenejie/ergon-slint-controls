@@ -116,6 +116,27 @@ pub fn activate_window(win: u32) {
 	let _ = conn.flush();
 }
 
+/// 親窓 (X) のクライアント領域の中心の座標 (ルート基準) を返す。子ダイアログ
+/// のマップ前配置に使う。取得できなければ `None`。
+///
+/// Mutter は transient ダイアログの親基準配置を 2 回目以降行わないことがあ
+/// る (同じヒントでも 1 回目だけ親中央になり、以降は画面中央に出る)。そのた
+/// めマップ前に位置を指定する。
+pub fn parent_center(parent: u32) -> Option<(i32, i32)> {
+	use x11rb::connection::Connection as _;
+	use x11rb::protocol::xproto::ConnectionExt as _;
+	let Ok((conn, _)) = x11rb::connect(None) else { return None };
+	let root = conn.setup().roots[0].root;
+	let Ok(g) = conn.get_geometry(parent) else { return None };
+	let Ok(g) = g.reply() else { return None };
+	let Ok(t) = conn.translate_coordinates(parent, root, 0, 0) else { return None };
+	let Ok(t) = t.reply() else { return None };
+	Some((
+		t.dst_x as i32 + (g.width as i32) / 2,
+		t.dst_y as i32 + (g.height as i32) / 2,
+	))
+}
+
 /// (診断) ダイアログ窓の WM プロパティとマップ状態を標準エラーへ出力する。
 /// `ERGON_MODAL_DEBUG=1` のときのみ出力する。
 pub fn debug_dump_dialog_props(win: u32) {
