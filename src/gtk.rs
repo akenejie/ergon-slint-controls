@@ -116,25 +116,87 @@ pub fn activate_window(win: u32) {
 	let _ = conn.flush();
 }
 
-/// 親窓 (X) のクライアント領域の中心の座標 (ルート基準) を返す。子ダイアログ
-/// のマップ前配置に使う。取得できなければ `None`。
+/// X ウィンドウの `_NET_WM_USER_TIME` (最後のユーザー操作の時刻) を読む。
+/// プロパティが無い / 0 (フォーカス不要の意味) なら `None`。
+pub fn read_user_time(win: u32) -> Option<u32> {
+	use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _};
+	let Ok((conn, _)) = x11rb::connect(None) else { return None };
+	let Some(p) = intern(&conn, b"_NET_WM_USER_TIME") else { return None };
+	let Ok(r) = conn.get_property(false, win, p, AtomEnum::CARDINAL, 0, 1) else { return None };
+	let Ok(r) = r.reply() else { return None };
+	let v: Vec<u32> = r.value32().map(|it| it.collect()).unwrap_or_default();
+	v.into_iter().find(|t| *t != 0)
+}
+
+/// X ウィンドウへ `_NET_WM_USER_TIME` を書く。
+pub fn write_user_time(win: u32, time: u32) {
+	use x11rb::connection::Connection as _;
+	use x11rb::protocol::xproto::AtomEnum;
+	use x11rb::wrapper::ConnectionExt as _;
+	let Ok((conn, _)) = x11rb::connect(None) else { return };
+	let Some(p) = intern(&conn, b"_NET_WM_USER_TIME") else { return };
+	let _ = conn
+		.change_property32(
+			x11rb::protocol::xproto::PropMode::REPLACE,
+			win,
+			p,
+			AtomEnum::CARDINAL,
+			&[time],
+		)
+		.map(|c| c.ignore_error());
+	let _ = conn.flush();
+}
+
+/// 現在の X サーバー時刻を取得する (PropertyNotify トリック)。
 ///
-/// Mutter は transient ダイアログの親基準配置を 2 回目以降行わないことがあ
-/// る (同じヒントでも 1 回目だけ親中央になり、以降は画面中央に出る)。そのた
-/// めマップ前に位置を指定する。
-pub fn parent_center(parent: u32) -> Option<(i32, i32)> {
+/// 自分の窓でプロパティを変更し、発生した PropertyNotify イベントのタイム
+/// スタンプを読む。X プロトコルには「現在時刻」を問い合わせる API がないた
+/// め、この方法で取得する。約 200ms で諦める (失敗時は `None`)。
+pub fn current_server_time(win: u32) -> Option<u32> {
 	use x11rb::connection::Connection as _;
 	use x11rb::protocol::xproto::ConnectionExt as _;
+	use x11rb::protocol::xproto::EventMask;
+	use x11rb::wrapper::ConnectionExt as _;
 	let Ok((conn, _)) = x11rb::connect(None) else { return None };
-	let root = conn.setup().roots[0].root;
-	let Ok(g) = conn.get_geometry(parent) else { return None };
-	let Ok(g) = g.reply() else { return None };
-	let Ok(t) = conn.translate_coordinates(parent, root, 0, 0) else { return None };
-	let Ok(t) = t.reply() else { return None };
-	Some((
-		t.dst_x as i32 + (g.width as i32) / 2,
-		t.dst_y as i32 + (g.height as i32) / 2,
-	))
+	// PropertyNotify を受信できるようにする。
+	let Ok(attr) = conn.change_window_attributes(
+		win,
+		&x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
+			.event_mask(EventMask::PROPERTY_CHANGE),
+	) else { return None };
+	if attr.check().is_err() { return None };
+	let _ = conn.flush();
+	// プロパティを変更して PropertyNotify を発生させる。
+	let Ok(name) = conn.intern_atom(false, b"WM_NAME") else { return None };
+	let Ok(name) = name.reply() else { return None };
+	let name = name.atom;
+	let Ok(cp) = conn.change_property8(
+		x11rb::protocol::xproto::PropMode::REPLACE,
+		win,
+		name,
+		x11rb::protocol::xproto::AtomEnum::STRING,
+		b"",
+	) else { return None };
+	let _ = cp.ignore_error();
+	let _ = conn.flush();
+	// イベントを待つ (タイムアウト付き)。
+	let start = std::time::Instant::now();
+	loop {
+		if start.elapsed() > std::time::Duration::from_millis(200) {
+			return None;
+		}
+		match conn.poll_for_event() {
+			Ok(Some(ev)) => {
+				if let x11rb::protocol::Event::PropertyNotify(e) = ev {
+					if e.window == win {
+						return Some(e.time);
+					}
+				}
+			}
+			Ok(None) => std::thread::sleep(std::time::Duration::from_millis(2)),
+			Err(_) => return None,
+		}
+	}
 }
 
 /// (診断) ダイアログ窓の WM プロパティとマップ状態を標準エラーへ出力する。
