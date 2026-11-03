@@ -100,8 +100,11 @@ fn set_transient_for(conn: &x11rb::rust_connection::RustConnection, dialog: u32,
 /// X ウィンドウをアクティブにする (`_NET_ACTIVE_WINDOW` ClientMessage)。
 ///
 /// ウィンドウが WM に管理された (マップされた) 後に呼ぶこと。マップ前に
-/// 送ると WM に無視される。
-pub fn activate_window(win: u32) {
+/// 送ると WM に無視される。`time` には要求の根拠となるユーザー操作の時刻
+/// (`_NET_WM_USER_TIME` に使ったものと同じ値) を渡す。0 を渡すと WM のフォー
+/// カス盗み取り防止に「時刻の分からない古い要求」と扱われ、Mutter は拒否す
+/// るため、実時刻を渡すこと。
+pub fn activate_window(win: u32, time: u32) {
 	use x11rb::connection::Connection as _;
 	use x11rb::protocol::xproto::ClientMessageEvent;
 	use x11rb::protocol::xproto::ConnectionExt as _;
@@ -109,7 +112,7 @@ pub fn activate_window(win: u32) {
 	let Ok((conn, _)) = x11rb::connect(None) else { return };
 	let Some(state) = intern(&conn, b"_NET_ACTIVE_WINDOW") else { return };
 	let root = conn.setup().roots[0].root;
-	let event = ClientMessageEvent::new(32, win, state, [1, 0, 0, 0, 0]).to_owned();
+	let event = ClientMessageEvent::new(32, win, state, [1u32, time, 0, 0, 0]).to_owned();
 	let _ = conn
 		.send_event(false, root, EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY, event)
 		.map(|c| c.ignore_error());
@@ -262,6 +265,7 @@ pub fn debug_dump_dialog_props(win: u32) {
 		eprintln!("[modal-dbg] {name}: [{}]", values.join(", "));
 	};
 	let atom = |name: &[u8]| -> Option<u32> { intern(&conn, name) };
+	let mut transient_for: Option<u32> = None;
 	if let Some(p) = atom(b"WM_TRANSIENT_FOR") {
 		let v: Vec<u32> = conn
 			.get_property(false, win, p, AtomEnum::WINDOW, 0, 8)
@@ -269,7 +273,35 @@ pub fn debug_dump_dialog_props(win: u32) {
 			.and_then(|c| c.reply().ok())
 			.and_then(|r| r.value32().map(|it| it.collect()))
 			.unwrap_or_default();
+		transient_for = v.first().copied();
 		eprintln!("[modal-dbg] WM_TRANSIENT_FOR: {:?}", v);
+	}
+	// (診断) WM の管理窓一覧と transient 親の突き合わせ。Mutter は
+	// WM_TRANSIENT_FOR の示す窓が管理表に無いと transient を無効化し、
+	// 親基準の配置を行わない (screen.c の reload_transient_for 参照)。
+	// この突き合わせで「親が管理表に無い」ことを即座に検出できる。
+	if let Some(p) = atom(b"_NET_CLIENT_LIST") {
+		let managed: Vec<u32> = conn
+			.get_property(false, conn.setup().roots[0].root, p, AtomEnum::WINDOW, 0, 1024)
+			.ok()
+			.and_then(|c| c.reply().ok())
+			.and_then(|r| r.value32().map(|it| it.collect()))
+			.unwrap_or_default();
+		if let Some(t) = transient_for {
+			let in_list = managed.iter().any(|w| *w == t);
+			// transient 親の状態 (管理表に無い場合はWMが扱えない)。
+			let state = if in_list { "管理中" } else { "管理表に無い(!)" };
+			eprintln!("[modal-dbg] transient 親 {t}: {state} (管理窓数={})", managed.len());
+		}
+		if let Some(ap) = atom(b"_NET_ACTIVE_WINDOW") {
+			let active: Vec<u32> = conn
+				.get_property(false, conn.setup().roots[0].root, ap, AtomEnum::WINDOW, 0, 8)
+				.ok()
+				.and_then(|c| c.reply().ok())
+				.and_then(|r| r.value32().map(|it| it.collect()))
+				.unwrap_or_default();
+			eprintln!("[modal-dbg] _NET_ACTIVE_WINDOW: {:?} (管理窓: {:?})", active, managed);
+		}
 	}
 	if let Some(p) = atom(b"_NET_WM_STATE") {
 		dump("_NET_WM_STATE", &read_atoms(p));

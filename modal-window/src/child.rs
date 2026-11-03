@@ -159,32 +159,30 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 			cw.set_transient_for(Some(xid));
 		}
 		cw.set_modal(true);
-		// Linux: 親子両方へユーザー操作の時刻を設定する。EWMH のフォーカス盗
-		// み取り防止は窓の _NET_WM_USER_TIME を見るため、これが無いと「ユーザ
-		// ー操作と無関係に開いた窓」として扱われ、Mutter はフォーカスを与えず
-		// 親基準の配置も行わない (2 回目以降のダイアログが画面中央に開く原因)。
-		// 親にも同時に設定するのは、親が最後にユーザー操作を受けた時刻として
-		// 正しい情報を WM 側に残すため。時刻の取得は PropertyNotify トリック
-		// で行う (X プロトコルには現在時刻を問い合わせる API が無い)。位置指
-		// 定はしない (WM の責任)。
+		// Linux: 子ダイアログへユーザー操作の時刻を設定する。EWMH のフォーカ
+		// ス盗み取り防止は窓の _NET_WM_USER_TIME を見るため、これが無いと「ユ
+		// ーザー操作と無関係に開いた窓」として扱われ、Mutter はフォーカスを与
+		// えない。親窓の時刻は winit フォーク (modal.5) が入力イベントのたび
+		// に自動更新するため、ここでは触らない (子と同じ時刻を親に上書きする
+		// と「子が親より新しい」という比較が成立しなくなる)。時刻の取得は
+		// PropertyNotify トリックで行う (X プロトコルには現在時刻を問い合わせ
+		// る API が無い)。位置指定はしない (WM の責任)。
 		#[cfg(target_os = "linux")]
 		{
-			if let Some(parent) = parent_xid {
-				if let Some(child) = cw.xlib_window() {
-					let parent = parent as u32;
-					let child = child as u32;
-					if let Some(t) = ergon_slint_controls::gtk::current_server_time(child) {
-						ergon_slint_controls::gtk::write_user_time(parent, t);
-						ergon_slint_controls::gtk::write_user_time(child, t);
-					}
-					// (診断) マップ直前の状態を記録する。
-					ergon_slint_controls::gtk::debug_dump_dialog_props(child);
-					slint::Timer::single_shot(std::time::Duration::from_millis(300), move || {
-						ergon_slint_controls::gtk::activate_window(child);
-						// (診断) マップ完了後 (WM の処理後) の状態を記録する。
-						ergon_slint_controls::gtk::debug_dump_dialog_props(child);
-					});
+			if let Some(child) = cw.xlib_window() {
+				let child = child as u32;
+				let t = ergon_slint_controls::gtk::current_server_time(child);
+				if let Some(t) = t {
+					ergon_slint_controls::gtk::write_user_time(child, t);
 				}
+				// (診断) マップ直前の状態を記録する。
+				ergon_slint_controls::gtk::debug_dump_dialog_props(child);
+				slint::Timer::single_shot(std::time::Duration::from_millis(300), move || {
+					// 活性化要求には実時刻を添える (0 だと WM に拒否される)。
+					ergon_slint_controls::gtk::activate_window(child, t.unwrap_or(0));
+					// (診断) マップ完了後 (WM の処理後) の状態を記録する。
+					ergon_slint_controls::gtk::debug_dump_dialog_props(child);
+				});
 			}
 		}
 		// 非表示で生成した子ダイアログをここでマップする。
