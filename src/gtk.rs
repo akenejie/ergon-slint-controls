@@ -116,34 +116,46 @@ pub fn activate_window(win: u32) {
 	let _ = conn.flush();
 }
 
-/// X ウィンドウの `_NET_WM_USER_TIME` (最後のユーザー操作の時刻) を読む。
-/// プロパティが無い / 0 (フォーカス不要の意味) なら `None`。
-pub fn read_user_time(win: u32) -> Option<u32> {
-	use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _};
-	let Ok((conn, _)) = x11rb::connect(None) else { return None };
-	let Some(p) = intern(&conn, b"_NET_WM_USER_TIME") else { return None };
-	let Ok(r) = conn.get_property(false, win, p, AtomEnum::CARDINAL, 0, 1) else { return None };
-	let Ok(r) = r.reply() else { return None };
-	let v: Vec<u32> = r.value32().map(|it| it.collect()).unwrap_or_default();
-	v.into_iter().find(|t| *t != 0)
-}
-
 /// X ウィンドウへ `_NET_WM_USER_TIME` を書く。
 pub fn write_user_time(win: u32, time: u32) {
 	use x11rb::connection::Connection as _;
 	use x11rb::protocol::xproto::AtomEnum;
 	use x11rb::wrapper::ConnectionExt as _;
-	let Ok((conn, _)) = x11rb::connect(None) else { return };
-	let Some(p) = intern(&conn, b"_NET_WM_USER_TIME") else { return };
-	let _ = conn
-		.change_property32(
-			x11rb::protocol::xproto::PropMode::REPLACE,
-			win,
-			p,
-			AtomEnum::CARDINAL,
-			&[time],
-		)
-		.map(|c| c.ignore_error());
+	let dbg = std::env::var("ERGON_MODAL_DEBUG").is_ok();
+	let Ok((conn, _)) = x11rb::connect(None) else {
+		if dbg {
+			eprintln!("[modal-dbg] write_user_time({win}): 接続失敗");
+		}
+		return;
+	};
+	let Some(p) = intern(&conn, b"_NET_WM_USER_TIME") else {
+		if dbg {
+			eprintln!("[modal-dbg] write_user_time({win}): atom 取得失敗");
+		}
+		return;
+	};
+	match conn.change_property32(
+		x11rb::protocol::xproto::PropMode::REPLACE,
+		win,
+		p,
+		AtomEnum::CARDINAL,
+		&[time],
+	) {
+		Ok(c) => {
+			if let Err(e) = c.check() {
+				if dbg {
+					eprintln!("[modal-dbg] write_user_time({win}): X エラー: {e}");
+				}
+			} else if dbg {
+				eprintln!("[modal-dbg] write_user_time({win}): time={time} 書き込み成功");
+			}
+		}
+		Err(e) => {
+			if dbg {
+				eprintln!("[modal-dbg] write_user_time({win}): 要求失敗: {e}");
+			}
+		}
+	}
 	let _ = conn.flush();
 }
 
@@ -157,14 +169,30 @@ pub fn current_server_time(win: u32) -> Option<u32> {
 	use x11rb::protocol::xproto::ConnectionExt as _;
 	use x11rb::protocol::xproto::EventMask;
 	use x11rb::wrapper::ConnectionExt as _;
-	let Ok((conn, _)) = x11rb::connect(None) else { return None };
+	let dbg = std::env::var("ERGON_MODAL_DEBUG").is_ok();
+	let Ok((conn, _)) = x11rb::connect(None) else {
+		if dbg {
+			eprintln!("[modal-dbg] current_server_time({win}): 接続失敗");
+		}
+		return None;
+	};
 	// PropertyNotify を受信できるようにする。
 	let Ok(attr) = conn.change_window_attributes(
 		win,
 		&x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
 			.event_mask(EventMask::PROPERTY_CHANGE),
-	) else { return None };
-	if attr.check().is_err() { return None };
+	) else {
+		if dbg {
+			eprintln!("[modal-dbg] current_server_time({win}): 属性変更失敗");
+		}
+		return None;
+	};
+	if attr.check().is_err() {
+		if dbg {
+			eprintln!("[modal-dbg] current_server_time({win}): 属性変更が X エラー");
+		}
+		return None;
+	}
 	let _ = conn.flush();
 	// プロパティを変更して PropertyNotify を発生させる。
 	let Ok(name) = conn.intern_atom(false, b"WM_NAME") else { return None };
@@ -183,6 +211,9 @@ pub fn current_server_time(win: u32) -> Option<u32> {
 	let start = std::time::Instant::now();
 	loop {
 		if start.elapsed() > std::time::Duration::from_millis(200) {
+			if dbg {
+				eprintln!("[modal-dbg] current_server_time({win}): PropertyNotify タイムアウト");
+			}
 			return None;
 		}
 		match conn.poll_for_event() {
@@ -245,6 +276,15 @@ pub fn debug_dump_dialog_props(win: u32) {
 	}
 	if let Some(p) = atom(b"_NET_WM_WINDOW_TYPE") {
 		dump("_NET_WM_WINDOW_TYPE", &read_atoms(p));
+	}
+	if let Some(p) = atom(b"_NET_WM_USER_TIME") {
+		let v: Vec<u32> = conn
+			.get_property(false, win, p, AtomEnum::CARDINAL, 0, 1)
+			.ok()
+			.and_then(|c| c.reply().ok())
+			.and_then(|r| r.value32().map(|it| it.collect()))
+			.unwrap_or_default();
+		eprintln!("[modal-dbg] _NET_WM_USER_TIME: {:?}", v);
 	}
 	let attrs = conn.get_window_attributes(win);
 	if let Ok(cookie) = attrs {

@@ -762,12 +762,11 @@ fn main() -> Result<(), slint::PlatformError> {
 		);
 	}
 
-	// ---------- タイトルバー テーマ (UI と明暗を揃える) ----------
-	ergon_slint_controls::platform::apply_titlebar_theme(
+	// ---------- ウィンドウの初期設定 (テーマ + ユーザー操作時刻) ----------
+	ergon_slint_controls::platform::setup_window(
 		&ui,
 		ergon_slint_controls::platform::TitlebarTheme::Light,
 	);
-	let _ = ergon_slint_controls::platform::applied_titlebar_theme();
 
 	ui.run()
 }

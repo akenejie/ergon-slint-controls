@@ -303,7 +303,7 @@ if dialog_active() || stale_input_pending() { return EventResult::PreventDefault
 
 | 関数 | OS | 内容 |
 |---|---|---|
-| `apply_titlebar_theme(&ui, TitlebarTheme::Light / Dark / System)` | Windows / macOS | 装飾テーマの指定。内部 UI を fluent-light に固定するなら Light を明示 (指定しないと UI と装飾の明暗が分裂する)。モーダル子ダイアログは modal-window が既定で親に揃える |
+| `setup_window(&ui, TitlebarTheme::Light / Dark / System)` | 全 OS | 窓の初期設定。装飾テーマの指定 (内部 UI を fluent-light に固定するなら Light を明示。指定しないと UI と装飾の明暗が分裂する) と、X11 では `_NET_WM_USER_TIME` の設定 (フォーカス盗み取り防止。これが無いと WM は以後開くモーダル子ダイアログの親基準配置・フォーカス付与を行わない)。モーダル子ダイアログのテーマとユーザー操作時刻は modal-window が既定で親に揃える |
 | `applied_titlebar_theme()` | 同上 | 現在適用済みのテーマ |
 | `install_window_icon(hwnd, resource_id)` | Windows | exe 埋め込み .ico をタイトルバー / タスクバーへ設定 |
 | `main_window_hwnd(&slint::Window)` | Windows | HWND を取得 |

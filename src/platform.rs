@@ -17,14 +17,14 @@ pub enum TitlebarTheme {
 	System,
 }
 
-// apply_titlebar_theme で明示指定したテーマ。winit の Window::theme() は
+// setup_window で明示指定したテーマ。winit の Window::theme() は
 // X11 では XSETTINGS 依存で None を返すことがあり、ダイアログの「親への
 // 追従」の真実としては使えないため、指定値をこちらで保持する。
 // 0 = System / 1 = Light / 2 = Dark
 static APPLIED_TITLEBAR_THEME: std::sync::atomic::AtomicU8 =
 	std::sync::atomic::AtomicU8::new(0);
 
-/// [`apply_titlebar_theme`] で明示指定したテーマ (未指定なら `None`)。
+/// [`setup_window`] で明示指定したテーマ (未指定なら `None`)。
 /// modal-window が子ダイアログを親に揃えるのに使う。
 pub fn applied_titlebar_theme() -> Option<TitlebarTheme> {
 	use std::sync::atomic::Ordering::Relaxed;
@@ -35,17 +35,24 @@ pub fn applied_titlebar_theme() -> Option<TitlebarTheme> {
 	}
 }
 
-/// ウィンドウのタイトルバー テーマを指定する (ライブラリの責務)。
+/// ウィンドウの初期設定を適用する (ライブラリの責務)。
 ///
-/// Slint の winit バックエンドは検出した色スキームで装飾テーマを固定する。
-/// 内部 UI のスタイルを固定しているアプリでは、装飾も明示的に揃えないと
-/// UI とタイトルバーの明暗が分裂する。winit ウィンドウは外観クエリ待ちで
-/// 生成が遅れることがあるため、生成を待つ非同期タスクで適用する (生成済み
-/// なら即時)。ウィンドウ生成直後に呼ぶ。
+/// - **タイトルバー テーマ**: Slint の winit バックエンドは検出した色スキー
+///   ムで装飾テーマを固定する。内部 UI のスタイルを固定しているアプリでは、
+///   装飾も明示的に揃えないと UI とタイトルバーの明暗が分裂する。
+/// - **ユーザー操作時刻 (X11)**: `_NET_WM_USER_TIME` を設定する。EWMH の
+///   フォーカス盗み取り防止はこのプロパティを見るため、これが無いと WM は
+///   「ユーザー操作と無関係に開いた窓」として扱い、以後開くモーダル子ダイア
+///   ログの親基準配置・フォーカス付与が行われない (winit はこのプロパティを
+///   扱わないため、ライブラリが X プロトコルで直接設定する)。
+///
+/// winit ウィンドウは外観クエリ待ちで生成が遅れることがあるため、生成を待
+/// つ非同期タスクで適用する (生成済みなら即時)。ウィンドウ生成直後に呼ぶ。
 ///
 /// モーダル子ダイアログのテーマは modal-window が既定で親に揃えるため、
-/// アプリが個別に指定する必要はない。
-pub fn apply_titlebar_theme<P: slint::ComponentHandle + 'static>(
+/// アプリが個別に指定する必要はない。子ダイアログのユーザー操作時刻も
+/// modal-window が親の値から設定する。
+pub fn setup_window<P: slint::ComponentHandle + 'static>(
 	component: &P,
 	theme: TitlebarTheme,
 ) {
@@ -69,6 +76,36 @@ pub fn apply_titlebar_theme<P: slint::ComponentHandle + 'static>(
 			TitlebarTheme::Dark => Some(Theme::Dark),
 			TitlebarTheme::System => None,
 		});
+		// ユーザー操作時刻 (X11)。winit が扱わないため X プロトコルで直接
+		// 設定する。X プロトコルには「現在時刻」を問い合わせる API が無いた
+		// め、PropertyNotify トリックで取得する。
+		#[cfg(target_os = "linux")]
+		{
+			let dbg = std::env::var("ERGON_MODAL_DEBUG").is_ok();
+			match winit_window.xlib_window() {
+				Some(xid) => {
+					let xid = xid as u32;
+					match crate::gtk::current_server_time(xid) {
+						Some(t) => {
+							if dbg {
+								eprintln!("[modal-dbg] setup_window: xid={xid} server time={t}");
+							}
+							crate::gtk::write_user_time(xid, t);
+						}
+						None => {
+							if dbg {
+								eprintln!("[modal-dbg] setup_window: current_server_time failed");
+							}
+						}
+					}
+				}
+				None => {
+					if dbg {
+						eprintln!("[modal-dbg] setup_window: xlib_window is None");
+					}
+				}
+			}
+		}
 	});
 }
 
