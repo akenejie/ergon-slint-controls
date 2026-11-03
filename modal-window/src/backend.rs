@@ -14,6 +14,13 @@ use crate::MODAL_MODE;
 #[cfg(any(windows, all(unix, not(target_os = "macos"))))]
 static NEXT_WINDOW_IS_CHILD_DIALOG: std::sync::atomic::AtomicBool =
 	std::sync::atomic::AtomicBool::new(false);
+// 次に生成する子ダイアログの transient 親 (X11 ウィンドウ ID、0 = 指定なし)。
+// mark_next_child_dialog_of() が立て、生成フックが swap で消費する。生成時
+// (XMapWindow と同じ要求ストリーム) に WM_TRANSIENT_FOR を焼き込むため、
+// slint 側がどのタイミングでマップしても WM は transient を解決できる。
+#[cfg(all(unix, not(target_os = "macos")))]
+static NEXT_CHILD_TRANSIENT_PARENT: std::sync::atomic::AtomicU32 =
+	std::sync::atomic::AtomicU32::new(0);
 // 次に生成する子ダイアログのタイトルバー テーマ (0 = 継承しない / 1 = Light /
 // 2 = Dark)。既定では open_child_modal が親ウィンドウの現在テーマを引き継ぐ
 // (ダイアログのテーマは親に揃えるのが OS の慣習)。Windows は生成フックで
@@ -77,6 +84,28 @@ pub fn mark_next_window_as_child_dialog() {
 	}
 	#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
 	NEXT_WINDOW_IS_CHILD_DIALOG.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// 次に生成する Slint ウィンドウを「`parent` のモーダル子ダイアログ」として
+/// 作るよう予約する。子コンポーネント生成の直前に呼ぶ。
+///
+/// [`mark_next_window_as_child_dialog`] と同じ役割に加え、X11 では親ウィンド
+/// ウ ID を生成フックへ渡し、**ウィンドウ生成時に WM_TRANSIENT_FOR を書き込
+/// む**。winit の post-creation API (set_transient_for) は生成後の適用になる
+/// ため、slint が show() を遅延マップする場合などに transient 無しでマップ
+/// されるレースがあり、Mutter は transient 無しで管理した位置 (親基準でな
+/// い) を確定させてしまう。生成時に焼き込むことでこれを防ぐ。
+pub fn mark_next_child_dialog_of(parent: &slint::Window) {
+	mark_next_window_as_child_dialog();
+	#[cfg(all(unix, not(target_os = "macos")))]
+	{
+		use slint::winit_030::WinitWindowAccessor;
+		let xid = parent
+			.with_winit_window(|pw| pw.xlib_window())
+			.flatten()
+			.unwrap_or(0);
+		NEXT_CHILD_TRANSIENT_PARENT.store(xid, std::sync::atomic::Ordering::Relaxed);
+	}
 }
 
 /// (Windows) 子ダイアログの所有者となるメインウィンドウの HWND を登録する。
@@ -155,9 +184,13 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 		slint::platform::set_platform(Box::new(backend))
 			.map_err(|e| slint::PlatformError::Other(e.to_string()))?;
 	}
-	// X11: 子ダイアログを生成時点で _NET_WM_WINDOW_TYPE_DIALOG にする。
-	// ダイアログ型はウィンドウ マネージャが「タイトルバーのメニュー無し・
-	// タスクバーに出さない」等の扱いをする。transient / modal は生成後に
+	// X11: 子ダイアログを生成時点で _NET_WM_WINDOW_TYPE_DIALOG と
+	// WM_TRANSIENT_FOR (transient 親) にする。ダイアログ型はウィンドウ マネー
+	// ジャが「タイトルバーのメニュー無し・タスクバーに出さない」等の扱いをす
+	// る。transient を生成時に焼き込むのは、Mutter が transient を解決するの
+	// は管理開始時 (最初のマップ) 一度きりで、解決できないと親基準の配置を行
+	// わないため。slint の show() は遅延マップであり、post-creation の
+	// set_transient_for では間に合わないレースが起きる。modal は生成後に
 	// child モジュールが付ける。位置は座標指定せず WM の配置 (transient なら
 	// 親基準) に任せる。テーマは生成後に child.rs が set_theme する (slint
 	// バックエンドが生成直後にホストのカラースキームを流し込むため、生成時
@@ -175,10 +208,13 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 					NEXT_WINDOW_IS_CHILD_DIALOG.swap(false, std::sync::atomic::Ordering::Relaxed);
 				if !child {
 					NEXT_CHILD_THEME.store(0, std::sync::atomic::Ordering::Relaxed);
+					NEXT_CHILD_TRANSIENT_PARENT.store(0, std::sync::atomic::Ordering::Relaxed);
 					attrs
 				} else {
+					let parent = NEXT_CHILD_TRANSIENT_PARENT.swap(0, std::sync::atomic::Ordering::Relaxed);
 					attrs
 						.with_x11_window_type(vec![WindowType::Dialog])
+						.with_x11_transient_for(if parent != 0 { Some(parent) } else { None })
 						.with_visible(false)
 				}
 			})

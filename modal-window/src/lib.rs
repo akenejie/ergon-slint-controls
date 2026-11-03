@@ -106,7 +106,7 @@ compile_error!(
 pub mod backend;
 pub mod child;
 
-pub use backend::{mark_next_window_as_child_dialog, prepare_backend};
+pub use backend::{mark_next_child_dialog_of, mark_next_window_as_child_dialog, prepare_backend};
 #[cfg(windows)]
 pub use backend::{note_owner_hwnd, note_owner_window};
 pub use child::{

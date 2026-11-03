@@ -356,9 +356,10 @@ fn main() -> Result<(), slint::PlatformError> {
 		if slot.borrow().is_some() {
 			return;   // 二重オープン ガード (ライブラリ側にも同じガードがある)
 		}
-		// 次のウィンドウ生成がモーダル子ダイアログだとライブラリへ伝える。
+		// 次のウィンドウ生成がこのウィンドウのモーダル子ダイアログだとライブラ
+		// リへ伝える (X11 では transient 親も生成時に焼き込む)。
 		#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
-		modal_window::mark_next_window_as_child_dialog();
+		modal_window::mark_next_child_dialog_of(main.window());
 
 		let Ok(dlg) = TimeKeeperExport::new() else { return };
 		// 表示直前に現在値を同期する。
