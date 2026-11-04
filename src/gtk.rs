@@ -233,6 +233,102 @@ pub fn current_server_time(win: u32) -> Option<u32> {
 	}
 }
 
+/// (診断) 窓のマップ状態と `_NET_WM_STATE` の遷移を 10ms 間隔で約 800ms 追
+/// 踪し、変化したときだけ標準エラーへ出力する。`ERGON_MODAL_DEBUG=1` のとき
+/// のみ動作する。マップ → withdraw → 再マップのような WM による二重管理
+/// (ちらつきの原因) を切り分けるためのもの。
+pub fn debug_trace_map_state(win: Option<u32>) {
+	use x11rb::protocol::xproto::AtomEnum;
+	use x11rb::protocol::xproto::ConnectionExt as _;
+	use x11rb::protocol::xproto::MapState;
+	let Some(win) = win else { return };
+	if std::env::var("ERGON_MODAL_DEBUG").is_err() {
+		return;
+	}
+	let Ok((conn, _screen)) = x11rb::connect(None) else { return };
+	let Some(state_atom) = intern(&conn, b"_NET_WM_STATE") else { return };
+	let snapshot = move |conn: &x11rb::rust_connection::RustConnection| -> Option<String> {
+		let attrs = conn.get_window_attributes(win).ok()?.reply().ok()?;
+		let map = match attrs.map_state {
+			MapState::VIEWABLE => "Viewable",
+			MapState::UNMAPPED => "Unmapped",
+			_ => "Unviewable",
+		};
+		let mut states = String::new();
+		if let Ok(r) = conn.get_property(false, win, state_atom, AtomEnum::ATOM, 0, 64) {
+			if let Ok(r) = r.reply() {
+				if let Some(vals) = r.value32() {
+					for a in vals {
+						if let Ok(c) = conn.get_atom_name(a) {
+							if let Ok(n) = c.reply() {
+								states.push_str(String::from_utf8_lossy(&n.name).trim_start_matches("_NET_WM_STATE_"));
+								states.push(',');
+							}
+						}
+					}
+				}
+			}
+		}
+		Some(format!("{map} [{states}]"))
+	};
+	let last = std::cell::RefCell::new(snapshot(&conn));
+	let ticks = std::cell::Cell::new(0u32);
+	let holder = std::rc::Rc::new(std::cell::RefCell::new(None::<slint::Timer>));
+	let holder2 = holder.clone();
+	let timer = slint::Timer::default();
+	timer.start(
+		slint::TimerMode::Repeated,
+		std::time::Duration::from_millis(10),
+		move || {
+			let n = ticks.get() + 1;
+			ticks.set(n);
+			if n > 80 {
+				if let Some(t) = holder2.borrow_mut().take() {
+					t.stop();
+				}
+				return;
+			}
+			let cur = snapshot(&conn);
+			if cur != *last.borrow() {
+				eprintln!("[modal-dbg] trace +{}ms: {:?} -> {:?}", n * 10, last.borrow(), cur);
+				*last.borrow_mut() = cur;
+			}
+		},
+	);
+	*holder.borrow_mut() = Some(timer);
+}
+
+/// (診断) 活性化要求の直前のフォーカス状況を出力する。Mutter は要求のタイ
+/// ムスタンプがフォーカス窓の `_NET_WM_USER_TIME` より古いと活性化を拒否す
+/// るため、拒否の切り分けに使う。`ERGON_MODAL_DEBUG=1` のときのみ出力する。
+pub fn debug_dump_activation_context(child: u32, parent: Option<u32>, t: Option<u32>) {
+	use x11rb::connection::Connection as _;
+	use x11rb::protocol::xproto::AtomEnum;
+	use x11rb::protocol::xproto::ConnectionExt as _;
+	if std::env::var("ERGON_MODAL_DEBUG").is_err() {
+		return;
+	}
+	let Ok((conn, _)) = x11rb::connect(None) else { return };
+	let read_cardinal = |w: u32, name: &[u8]| -> Option<u32> {
+		let Some(p) = intern(&conn, name) else { return None };
+		let r = conn.get_property(false, w, p, AtomEnum::CARDINAL, 0, 1).ok()?.reply().ok()?;
+		r.value32().and_then(|mut it| it.next())
+	};
+	let read_root_window_prop = |name: &[u8]| -> Option<u32> {
+		let Some(p) = intern(&conn, name) else { return None };
+		let root = conn.setup().roots[0].root;
+		let r = conn.get_property(false, root, p, AtomEnum::WINDOW, 0, 8).ok()?.reply().ok()?;
+		r.value32().and_then(|mut it| it.next())
+	};
+	let active = read_root_window_prop(b"_NET_ACTIVE_WINDOW");
+	let parent_ut = parent.and_then(|p| read_cardinal(p, b"_NET_WM_USER_TIME"));
+	let child_ut = read_cardinal(child, b"_NET_WM_USER_TIME");
+	eprintln!(
+		"[modal-dbg] 活性化要求: 子={child} t={:?} / _NET_ACTIVE_WINDOW={:?} / 親 user_time={:?} / 子 user_time={:?}",
+		t, active, parent_ut, child_ut
+	);
+}
+
 /// (診断) ダイアログ窓の WM プロパティとマップ状態を標準エラーへ出力する。
 /// `ERGON_MODAL_DEBUG=1` のときのみ出力する。
 pub fn debug_dump_dialog_props(win: u32) {
