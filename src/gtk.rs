@@ -126,8 +126,10 @@ pub fn activate_window_until_focused(win: u32) {
 		return;
 	}
 	let ticks = std::cell::Cell::new(0u32);
+	let sent = std::cell::Cell::new(0u32);
 	let holder = std::rc::Rc::new(std::cell::RefCell::new(None::<slint::Timer>));
 	let holder2 = holder.clone();
+	let dbg = std::env::var("ERGON_MODAL_DEBUG").is_ok();
 	let timer = slint::Timer::default();
 	timer.start(
 		slint::TimerMode::Repeated,
@@ -136,6 +138,19 @@ pub fn activate_window_until_focused(win: u32) {
 			let n = ticks.get() + 1;
 			ticks.set(n);
 			if n > 20 || focused(&conn) {
+				if dbg {
+					if focused(&conn) {
+						eprintln!(
+							"[modal-dbg] activate_until_focused({win}): フォーカス済み (要求 {} 回、確認 {n} 回で停止)",
+							sent.get()
+						);
+					} else {
+						eprintln!(
+							"[modal-dbg] activate_until_focused({win}): 上限到達 (要求 {} 回)",
+							sent.get()
+						);
+					}
+				}
 				if let Some(t) = holder2.borrow_mut().take() {
 					t.stop();
 				}
@@ -159,6 +174,7 @@ pub fn activate_window_until_focused(win: u32) {
 				)
 				.map(|c| c.ignore_error());
 			let _ = conn.flush();
+			sent.set(sent.get() + 1);
 		},
 	);
 	*holder.borrow_mut() = Some(timer);
