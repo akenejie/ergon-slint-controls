@@ -202,6 +202,7 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 	#[cfg(all(unix, not(target_os = "macos")))]
 	{
 		use slint::winit_030::winit::platform::x11::{WindowAttributesExtX11, WindowType};
+		use slint::winit_030::winit::window::WindowButtons;
 		let backend = i_slint_backend_winit::Backend::builder()
 			.with_window_attributes_hook(|attrs| {
 				let child =
@@ -218,6 +219,11 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 						// モーダル状態も生成時に焼き込む (ClientMessage はマップ
 						// 前だと WM に無視されるため、管理開始時に読ませる)。
 						.with_x11_modal(true)
+						// 固定サイズ + 閉じるボタンだけも生成時に焼き込む。生成
+						// 後 (マップ後) の MWM ヒント変更は WM に再装飾させ、表
+						// 示位置がわずかにズレるちらつきの原因になる。
+						.with_resizable(false)
+						.with_enabled_buttons(WindowButtons::CLOSE)
 						.with_visible(false)
 				}
 			})
