@@ -128,7 +128,6 @@ pub fn dismiss_modal_dialog(parent: &slint::Window) {
 // set_transient_for / set_modal を使う (フォークは本クレートの必須要件)。
 #[cfg(not(windows))]
 pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
-	use slint::winit_030::winit::window::WindowButtons;
 	use slint::winit_030::WinitWindowAccessor;
 	// 固定サイズ + 閉じるボタンだけ、をウィンドウ マネージャへ要求する。
 	// X11 の set_resizable(false) は MWM ヒント (最大化不可・min=max) を設定する。
@@ -143,30 +142,30 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 	#[cfg(all(feature = "winit-modal-hints", unix, not(target_os = "macos")))]
 	let parent_xid = parent.with_winit_window(|pw| pw.xlib_window()).flatten();
 	child.with_winit_window(|cw| {
+	// X11 (linux): transient / modal / 固定サイズ / 閉じるボタンのみは**生成時
+	// に焼き込み済み** (backend.rs の生成フック → winit フォーク modal.6+)。
+	// マップ後にこれらを再送すると WM が状態変化として処理し、表示中の窓の再
+	// 装飾 / 再配置 (= ちらつき) の引き金になるため何もしない。
+	#[cfg(not(all(unix, not(target_os = "macos"))))]
+	{
+		use slint::winit_030::winit::window::WindowButtons;
 		cw.set_resizable(false);
 		cw.set_enabled_buttons(WindowButtons::CLOSE);
+	}
 	#[cfg(all(feature = "winit-modal-hints", unix, not(target_os = "macos")))]
 	{
-		// transient / modal は**マップ前に**付ける。WM は管理開始 (マップ) 時
-		// にこれらを読み、親基準の配置とモーダル扱いを決める。
-		// - transient は WM_TRANSIENT_FOR プロパティ (マップ前 OK)
-		// - modal はフォークの set_modal が _NET_WM_STATE プロパティにも書く
-		//   (EWMH の ClientMessage はマップ前だと WM に無視されるため。
-		//    プロパティ経由ならマップ前に確実に伝わる)
-		// マップ後にWM が状態プロパティを書き換えるのと競合しないよう、
-		// すべてのヒントは set_visible の前に済ませる。
-		if let Some(xid) = parent_xid {
-			cw.set_transient_for(Some(xid));
-		}
-		cw.set_modal(true);
+		// transient / modal / スタイルは生成時に焼き込まれているためここでは
+		// 触らない (上記のとおり)。マップ前に行うのは user time の補完だけ:
+		// 生成時に接続の最終入力時刻が焼き込まれる (winit フォーク modal.9)
+		// が、プログラム的に開かれた場合など焼き込みが空だったときの保険。
+		//
 		// Linux: 子ダイアログへユーザー操作の時刻を設定する。EWMH のフォーカ
 		// ス盗み取り防止は窓の _NET_WM_USER_TIME を見るため、これが無いと「ユ
 		// ーザー操作と無関係に開いた窓」として扱われ、Mutter はフォーカスを与
 		// えない。親窓の時刻は winit フォーク (modal.5) が入力イベントのたび
-		// に自動更新するため、ここでは触らない (子と同じ時刻を親に上書きする
-		// と「子が親より新しい」という比較が成立しなくなる)。時刻の取得は
-		// PropertyNotify トリックで行う (X プロトコルには現在時刻を問い合わせ
-		// る API が無い)。位置指定はしない (WM の責任)。
+		// に自動更新するため、ここでは触らない。時刻の取得は PropertyNotify
+		// トリックで行う (X プロトコルには現在時刻を問い合わせる API が無い)。
+		// 位置指定はしない (WM の責任)。
 		#[cfg(target_os = "linux")]
 		{
 			if let Some(child) = cw.xlib_window() {
