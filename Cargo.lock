@@ -1120,7 +1120,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "ergon-slint-controls"
-version = "0.3.67"
+version = "0.3.68"
 dependencies = [
  "gdkx11",
  "gtk",
@@ -6016,7 +6016,7 @@ checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 [[package]]
 name = "winit"
 version = "0.30.13"
-source = "git+https://github.com/akenejie/slint-modal-winit?tag=v0.30.13-modal.8#0826896164e274c2b7f5fc88682523dad6c22fd7"
+source = "git+https://github.com/akenejie/slint-modal-winit?tag=v0.30.13-modal.9#c2bc857d4738ddd2d34970ae58d36ea62390c353"
 dependencies = [
  "ahash",
  "android-activity",
