@@ -78,32 +78,20 @@ pub fn setup_window<P: slint::ComponentHandle + 'static>(
 		});
 		// ユーザー操作時刻 (X11)。winit が扱わないため X プロトコルで直接
 		// 設定する。X プロトコルには「現在時刻」を問い合わせる API が無いた
-		// め、PropertyNotify トリックで取得する。
+		// め、PropertyNotify トリックで取得する。EWMH のフォーカス盗み取り防
+		// 止はこの値を見るため、メイン窓のオープン時点で WM へユーザー操作の
+		// 時刻が伝わる。以後に開かれる子ダイアログの親基準配置・フォーカス付
+		// 与の土台になる。
 		#[cfg(target_os = "linux")]
 		{
-			let dbg = std::env::var("ERGON_MODAL_DEBUG").is_ok();
 			match winit_window.xlib_window() {
 				Some(xid) => {
 					let xid = xid as u32;
-					match crate::gtk::current_server_time(xid) {
-						Some(t) => {
-							if dbg {
-								eprintln!("[modal-dbg] setup_window: xid={xid} server time={t}");
-							}
-							crate::gtk::write_user_time(xid, t);
-						}
-						None => {
-							if dbg {
-								eprintln!("[modal-dbg] setup_window: current_server_time failed");
-							}
-						}
+					if let Some(t) = crate::gtk::current_server_time(xid) {
+						crate::gtk::write_user_time(xid, t);
 					}
 				}
-				None => {
-					if dbg {
-						eprintln!("[modal-dbg] setup_window: xlib_window is None");
-					}
-				}
+				None => {}
 			}
 		}
 	});

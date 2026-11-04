@@ -99,12 +99,29 @@ fn set_transient_for(conn: &x11rb::rust_connection::RustConnection, dialog: u32,
 
 /// X ウィンドウをフォーカスされるまで活性化し続ける (`_NET_ACTIVE_WINDOW`)。
 ///
-/// WM が管理を開始した直後の窓への活性化要求は、WM 側のタイミングで無視さ
-/// れることがある (Mutter で実機確認)。マップ直後から 60ms 間隔で
-/// `_NET_ACTIVE_WINDOW` を確認し、フォーカスされていなければ要求を送る。フ
-/// ォーカスされたら、または窓が消えた (閉じられた) ら停止する。要求のタイム
-/// スタンプは 0 (EWMH の「時刻指定なし」)。Mutter は 0 ならタイムスタンプに
-/// よる拒否チェックをスキップして自身で現在時刻を取得してフォーカスする。
+/// 実験で確定した Mutter (Ubuntu) の挙動:
+///
+/// - WM は窓の管理開始時 (マップ処理) に transient / modal / user time を一
+///   度だけ読む。マップ前ヒントが完全でも、**Mutter は管理時に自分でフォーカ
+///   スを与えない** (マップ後 +60ms 時点で `_NET_ACTIVE_WINDOW` はまだ親を指
+///   している。実機ログで 5 回とも再現)。WM 内部の事情 (最初のフレームのコン
+///   ポジットを待ってから焦点を決める等) で、クライアントから制御できない。
+/// - そのため GTK の `gtk_window_present` と同じく、マップ後の活性化要求が
+///   必要。要求は **マップ後約 60ms で確実に受理される** (WM が管理を終えた
+///   直後)。+150ms の単発要求は無視されることがあったため、要求と確認を組
+///   み合わせて確実性を上げる。
+/// - 要求のタイムスタンプは **0 (EWMH の「時刻指定なし」)** にする。Mutter の
+///   `meta_window_activate_full` は要求時刻が `display->last_user_time` (ディ
+///   スプレイ全体の最新ユーザーイベント時刻) より古いと要求を無視するが、こ
+///   の last_user_time は**自分自身の user time 書き込みでも更新される**ため、
+///   実時刻を添えると自分の書き込みに拒否される競合がある (実機で確認)。0 な
+///   ら Mutter は拒否チェックをスキップし、自身で現在時刻を取得してフォーカ
+///   スする。
+///
+/// 動作: 60ms 間隔で `_NET_ACTIVE_WINDOW` を確認し、フォーカスされていなけ
+/// れば要求を送る。フォーカスされたら、または窓が消えた (閉じられた) ら停止
+/// する (最大約 1.2s)。実運用では要求は 1 回で済む (2 回目の確認でフォーカ
+/// ス済みを検出して停止)。
 pub fn activate_window_until_focused(win: u32) {
 	use x11rb::connection::Connection as _;
 	use x11rb::protocol::xproto::AtomEnum;
@@ -126,10 +143,8 @@ pub fn activate_window_until_focused(win: u32) {
 		return;
 	}
 	let ticks = std::cell::Cell::new(0u32);
-	let sent = std::cell::Cell::new(0u32);
 	let holder = std::rc::Rc::new(std::cell::RefCell::new(None::<slint::Timer>));
 	let holder2 = holder.clone();
-	let dbg = std::env::var("ERGON_MODAL_DEBUG").is_ok();
 	let timer = slint::Timer::default();
 	timer.start(
 		slint::TimerMode::Repeated,
@@ -138,19 +153,6 @@ pub fn activate_window_until_focused(win: u32) {
 			let n = ticks.get() + 1;
 			ticks.set(n);
 			if n > 20 || focused(&conn) {
-				if dbg {
-					if focused(&conn) {
-						eprintln!(
-							"[modal-dbg] activate_until_focused({win}): フォーカス済み (要求 {} 回、確認 {n} 回で停止)",
-							sent.get()
-						);
-					} else {
-						eprintln!(
-							"[modal-dbg] activate_until_focused({win}): 上限到達 (要求 {} 回)",
-							sent.get()
-						);
-					}
-				}
 				if let Some(t) = holder2.borrow_mut().take() {
 					t.stop();
 				}
@@ -174,74 +176,55 @@ pub fn activate_window_until_focused(win: u32) {
 				)
 				.map(|c| c.ignore_error());
 			let _ = conn.flush();
-			sent.set(sent.get() + 1);
 		},
 	);
 	*holder.borrow_mut() = Some(timer);
 }
 
-/// X ウィンドウをアクティブにする (`_NET_ACTIVE_WINDOW` ClientMessage)。
-///
-/// ウィンドウが WM に管理された (マップされた) 後に呼ぶこと。マップ前に
-/// 送ると WM に無視される。`time` には要求の根拠となるユーザー操作の時刻
-/// (`_NET_WM_USER_TIME` に使ったものと同じ値) を渡す。0 を渡すと WM のフォー
-/// カス盗み取り防止に「時刻の分からない古い要求」と扱われ、Mutter は拒否す
-/// るため、実時刻を渡すこと。
-pub fn activate_window(win: u32, time: u32) {
-	use x11rb::connection::Connection as _;
-	use x11rb::protocol::xproto::ClientMessageEvent;
-	use x11rb::protocol::xproto::ConnectionExt as _;
-	use x11rb::protocol::xproto::EventMask;
-	let Ok((conn, _)) = x11rb::connect(None) else { return };
-	let Some(state) = intern(&conn, b"_NET_ACTIVE_WINDOW") else { return };
-	let root = conn.setup().roots[0].root;
-	let event = ClientMessageEvent::new(32, win, state, [1u32, time, 0, 0, 0]).to_owned();
-	let _ = conn
-		.send_event(false, root, EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY, event)
-		.map(|c| c.ignore_error());
-	let _ = conn.flush();
-}
+// X ウィンドウへの単発の活性化要求 (`_NET_ACTIVE_WINDOW` ClientMessage)。
+// activate_window_until_focused が要求送信を内包するため現在使用していない。
+// 知見: WM に管理された (マップされた) 後に送ること (マップ前は無視される)。
+// タイムスタンプは実時刻ではなく 0 (時刻指定なし) にするのが確実 — 実時刻だ
+// と Mutter の display->last_user_time との比較で拒否されることがある
+// (activate_window_until_focused のドキュメント参照)。
+//
+// pub fn activate_window(win: u32, time: u32) {
+// 	use x11rb::connection::Connection as _;
+// 	use x11rb::protocol::xproto::ClientMessageEvent;
+// 	use x11rb::protocol::xproto::ConnectionExt as _;
+// 	use x11rb::protocol::xproto::EventMask;
+// 	let Ok((conn, _)) = x11rb::connect(None) else { return };
+// 	let Some(state) = intern(&conn, b"_NET_ACTIVE_WINDOW") else { return };
+// 	let root = conn.setup().roots[0].root;
+// 	let event = ClientMessageEvent::new(32, win, state, [1u32, time, 0, 0, 0]).to_owned();
+// 	let _ = conn
+// 		.send_event(false, root, EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY, event)
+// 		.map(|c| c.ignore_error());
+// 	let _ = conn.flush();
+// }
 
 /// X ウィンドウへ `_NET_WM_USER_TIME` を書く。
+///
+/// EWMH のフォーカス盗み取り防止はこのプロパティを見るため、これが無いと
+/// WM は「ユーザー操作と無関係に開いた窓」として扱い、以後に開くモーダル子
+/// ダイアログの親基準配置・フォーカス付与が行われない。X プロトコルには書
+/// き込みエラーの同期待ちが無いため失敗は黙って無視する (診断コードで実機确
+/// 認済み: 正常時は毎回成功する)。
 pub fn write_user_time(win: u32, time: u32) {
 	use x11rb::connection::Connection as _;
 	use x11rb::protocol::xproto::AtomEnum;
 	use x11rb::wrapper::ConnectionExt as _;
-	let dbg = std::env::var("ERGON_MODAL_DEBUG").is_ok();
-	let Ok((conn, _)) = x11rb::connect(None) else {
-		if dbg {
-			eprintln!("[modal-dbg] write_user_time({win}): 接続失敗");
-		}
-		return;
-	};
-	let Some(p) = intern(&conn, b"_NET_WM_USER_TIME") else {
-		if dbg {
-			eprintln!("[modal-dbg] write_user_time({win}): atom 取得失敗");
-		}
-		return;
-	};
-	match conn.change_property32(
-		x11rb::protocol::xproto::PropMode::REPLACE,
-		win,
-		p,
-		AtomEnum::CARDINAL,
-		&[time],
-	) {
-		Ok(c) => {
-			if let Err(e) = c.check() {
-				if dbg {
-					eprintln!("[modal-dbg] write_user_time({win}): X エラー: {e}");
-				}
-			} else if dbg {
-				eprintln!("[modal-dbg] write_user_time({win}): time={time} 書き込み成功");
-			}
-		}
-		Err(e) => {
-			if dbg {
-				eprintln!("[modal-dbg] write_user_time({win}): 要求失敗: {e}");
-			}
-		}
-	}
+	let Ok((conn, _)) = x11rb::connect(None) else { return };
+	let Some(p) = intern(&conn, b"_NET_WM_USER_TIME") else { return };
+	let _ = conn
+		.change_property32(
+			x11rb::protocol::xproto::PropMode::REPLACE,
+			win,
+			p,
+			AtomEnum::CARDINAL,
+			&[time],
+		)
+		.map(|c| c.ignore_error());
 	let _ = conn.flush();
 }
 
@@ -255,30 +238,14 @@ pub fn current_server_time(win: u32) -> Option<u32> {
 	use x11rb::protocol::xproto::ConnectionExt as _;
 	use x11rb::protocol::xproto::EventMask;
 	use x11rb::wrapper::ConnectionExt as _;
-	let dbg = std::env::var("ERGON_MODAL_DEBUG").is_ok();
-	let Ok((conn, _)) = x11rb::connect(None) else {
-		if dbg {
-			eprintln!("[modal-dbg] current_server_time({win}): 接続失敗");
-		}
-		return None;
-	};
+	let Ok((conn, _)) = x11rb::connect(None) else { return None };
 	// PropertyNotify を受信できるようにする。
 	let Ok(attr) = conn.change_window_attributes(
 		win,
 		&x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
 			.event_mask(EventMask::PROPERTY_CHANGE),
-	) else {
-		if dbg {
-			eprintln!("[modal-dbg] current_server_time({win}): 属性変更失敗");
-		}
-		return None;
-	};
-	if attr.check().is_err() {
-		if dbg {
-			eprintln!("[modal-dbg] current_server_time({win}): 属性変更が X エラー");
-		}
-		return None;
-	}
+	) else { return None };
+	if attr.check().is_err() { return None };
 	let _ = conn.flush();
 	// プロパティを変更して PropertyNotify を発生させる。
 	let Ok(name) = conn.intern_atom(false, b"WM_NAME") else { return None };
@@ -297,9 +264,6 @@ pub fn current_server_time(win: u32) -> Option<u32> {
 	let start = std::time::Instant::now();
 	loop {
 		if start.elapsed() > std::time::Duration::from_millis(200) {
-			if dbg {
-				eprintln!("[modal-dbg] current_server_time({win}): PropertyNotify タイムアウト");
-			}
 			return None;
 		}
 		match conn.poll_for_event() {
@@ -320,214 +284,232 @@ pub fn current_server_time(win: u32) -> Option<u32> {
 /// 踪し、変化したときだけ標準エラーへ出力する。`ERGON_MODAL_DEBUG=1` のとき
 /// のみ動作する。マップ → withdraw → 再マップのような WM による二重管理
 /// (ちらつきの原因) を切り分けるためのもの。
-pub fn debug_trace_map_state(win: Option<u32>) {
-	use x11rb::protocol::xproto::AtomEnum;
-	use x11rb::protocol::xproto::ConnectionExt as _;
-	use x11rb::protocol::xproto::MapState;
-	let Some(win) = win else { return };
-	if std::env::var("ERGON_MODAL_DEBUG").is_err() {
-		return;
-	}
-	let Ok((conn, _screen)) = x11rb::connect(None) else { return };
-	let Some(state_atom) = intern(&conn, b"_NET_WM_STATE") else { return };
-	let snapshot = move |conn: &x11rb::rust_connection::RustConnection| -> Option<String> {
-		let attrs = conn.get_window_attributes(win).ok()?.reply().ok()?;
-		let map = match attrs.map_state {
-			MapState::VIEWABLE => "Viewable",
-			MapState::UNMAPPED => "Unmapped",
-			_ => "Unviewable",
-		};
-		let mut states = String::new();
-		if let Ok(r) = conn.get_property(false, win, state_atom, AtomEnum::ATOM, 0, 64) {
-			if let Ok(r) = r.reply() {
-				if let Some(vals) = r.value32() {
-					for a in vals {
-						if let Ok(c) = conn.get_atom_name(a) {
-							if let Ok(n) = c.reply() {
-								states.push_str(String::from_utf8_lossy(&n.name).trim_start_matches("_NET_WM_STATE_"));
-								states.push(',');
-							}
-						}
-					}
-				}
-			}
-		}
-		Some(format!("{map} [{states}]"))
-	};
-	let last = std::cell::RefCell::new(snapshot(&conn));
-	let ticks = std::cell::Cell::new(0u32);
-	let holder = std::rc::Rc::new(std::cell::RefCell::new(None::<slint::Timer>));
-	let holder2 = holder.clone();
-	let timer = slint::Timer::default();
-	timer.start(
-		slint::TimerMode::Repeated,
-		std::time::Duration::from_millis(10),
-		move || {
-			let n = ticks.get() + 1;
-			ticks.set(n);
-			if n > 80 {
-				if let Some(t) = holder2.borrow_mut().take() {
-					t.stop();
-				}
-				return;
-			}
-			let cur = snapshot(&conn);
-			if cur != *last.borrow() {
-				eprintln!("[modal-dbg] trace +{}ms: {:?} -> {:?}", n * 10, last.borrow(), cur);
-				*last.borrow_mut() = cur;
-			}
-		},
-	);
-	*holder.borrow_mut() = Some(timer);
-}
+// (診断コード) ERGON_MODAL_DEBUG による実機調査 (debug_trace_map_state) で使用したもの。
+// バイナリから排除するためコメントアウト済み。再調査が必要になったら
+// 行頭の // を外し、modal-window/src/child.rs の呼び出し箇所も復活させる。
+// /// (診断) 窓のマップ状態と `_NET_WM_STATE` の遷移を 10ms 間隔で約 800ms 追
+// /// 踪し、変化したときだけ標準エラーへ出力する。`ERGON_MODAL_DEBUG=1` のとき
+// /// のみ動作する。マップ → withdraw → 再マップのような WM による二重管理
+// /// (ちらつきの原因) を切り分けるためのもの。
+// pub fn debug_trace_map_state(win: Option<u32>) {
+// 	use x11rb::protocol::xproto::AtomEnum;
+// 	use x11rb::protocol::xproto::ConnectionExt as _;
+// 	use x11rb::protocol::xproto::MapState;
+// 	let Some(win) = win else { return };
+// 	if std::env::var("ERGON_MODAL_DEBUG").is_err() {
+// 		return;
+// 	}
+// 	let Ok((conn, _screen)) = x11rb::connect(None) else { return };
+// 	let Some(state_atom) = intern(&conn, b"_NET_WM_STATE") else { return };
+// 	let snapshot = move |conn: &x11rb::rust_connection::RustConnection| -> Option<String> {
+// 		let attrs = conn.get_window_attributes(win).ok()?.reply().ok()?;
+// 		let map = match attrs.map_state {
+// 			MapState::VIEWABLE => "Viewable",
+// 			MapState::UNMAPPED => "Unmapped",
+// 			_ => "Unviewable",
+// 		};
+// 		let mut states = String::new();
+// 		if let Ok(r) = conn.get_property(false, win, state_atom, AtomEnum::ATOM, 0, 64) {
+// 			if let Ok(r) = r.reply() {
+// 				if let Some(vals) = r.value32() {
+// 					for a in vals {
+// 						if let Ok(c) = conn.get_atom_name(a) {
+// 							if let Ok(n) = c.reply() {
+// 								states.push_str(String::from_utf8_lossy(&n.name).trim_start_matches("_NET_WM_STATE_"));
+// 								states.push(',');
+// 							}
+// 						}
+// 					}
+// 				}
+// 			}
+// 		}
+// 		Some(format!("{map} [{states}]"))
+// 	};
+// 	let last = std::cell::RefCell::new(snapshot(&conn));
+// 	let ticks = std::cell::Cell::new(0u32);
+// 	let holder = std::rc::Rc::new(std::cell::RefCell::new(None::<slint::Timer>));
+// 	let holder2 = holder.clone();
+// 	let timer = slint::Timer::default();
+// 	timer.start(
+// 		slint::TimerMode::Repeated,
+// 		std::time::Duration::from_millis(10),
+// 		move || {
+// 			let n = ticks.get() + 1;
+// 			ticks.set(n);
+// 			if n > 80 {
+// 				if let Some(t) = holder2.borrow_mut().take() {
+// 					t.stop();
+// 				}
+// 				return;
+// 			}
+// 			let cur = snapshot(&conn);
+// 			if cur != *last.borrow() {
+// 				eprintln!("[modal-dbg] trace +{}ms: {:?} -> {:?}", n * 10, last.borrow(), cur);
+// 				*last.borrow_mut() = cur;
+// 			}
+// 		},
+// 	);
+// 	*holder.borrow_mut() = Some(timer);
+// }
 
 /// (診断) 活性化要求の直前のフォーカス状況を出力する。Mutter は要求のタイ
 /// ムスタンプがフォーカス窓の `_NET_WM_USER_TIME` より古いと活性化を拒否す
 /// るため、拒否の切り分けに使う。`ERGON_MODAL_DEBUG=1` のときのみ出力する。
-pub fn debug_dump_activation_context(child: u32, parent: Option<u32>, t: Option<u32>) {
-	use x11rb::connection::Connection as _;
-	use x11rb::protocol::xproto::AtomEnum;
-	use x11rb::protocol::xproto::ConnectionExt as _;
-	if std::env::var("ERGON_MODAL_DEBUG").is_err() {
-		return;
-	}
-	let Ok((conn, _)) = x11rb::connect(None) else { return };
-	let read_cardinal = |w: u32, name: &[u8]| -> Option<u32> {
-		let Some(p) = intern(&conn, name) else { return None };
-		let r = conn.get_property(false, w, p, AtomEnum::CARDINAL, 0, 1).ok()?.reply().ok()?;
-		r.value32().and_then(|mut it| it.next())
-	};
-	let read_root_window_prop = |name: &[u8]| -> Option<u32> {
-		let Some(p) = intern(&conn, name) else { return None };
-		let root = conn.setup().roots[0].root;
-		let r = conn.get_property(false, root, p, AtomEnum::WINDOW, 0, 8).ok()?.reply().ok()?;
-		r.value32().and_then(|mut it| it.next())
-	};
-	let active = read_root_window_prop(b"_NET_ACTIVE_WINDOW");
-	let parent_ut = parent.and_then(|p| read_cardinal(p, b"_NET_WM_USER_TIME"));
-	let child_ut = read_cardinal(child, b"_NET_WM_USER_TIME");
-	eprintln!(
-		"[modal-dbg] 活性化要求: 子={child} t={:?} / _NET_ACTIVE_WINDOW={:?} / 親 user_time={:?} / 子 user_time={:?}",
-		t, active, parent_ut, child_ut
-	);
-}
+// (診断コード) ERGON_MODAL_DEBUG による実機調査 (debug_dump_activation_context) で使用したもの。
+// バイナリから排除するためコメントアウト済み。再調査が必要になったら
+// 行頭の // を外し、modal-window/src/child.rs の呼び出し箇所も復活させる。
+// /// (診断) 活性化要求の直前のフォーカス状況を出力する。Mutter は要求のタイ
+// /// ムスタンプがフォーカス窓の `_NET_WM_USER_TIME` より古いと活性化を拒否す
+// /// るため、拒否の切り分けに使う。`ERGON_MODAL_DEBUG=1` のときのみ出力する。
+// pub fn debug_dump_activation_context(child: u32, parent: Option<u32>, t: Option<u32>) {
+// 	use x11rb::connection::Connection as _;
+// 	use x11rb::protocol::xproto::AtomEnum;
+// 	use x11rb::protocol::xproto::ConnectionExt as _;
+// 	if std::env::var("ERGON_MODAL_DEBUG").is_err() {
+// 		return;
+// 	}
+// 	let Ok((conn, _)) = x11rb::connect(None) else { return };
+// 	let read_cardinal = |w: u32, name: &[u8]| -> Option<u32> {
+// 		let Some(p) = intern(&conn, name) else { return None };
+// 		let r = conn.get_property(false, w, p, AtomEnum::CARDINAL, 0, 1).ok()?.reply().ok()?;
+// 		r.value32().and_then(|mut it| it.next())
+// 	};
+// 	let read_root_window_prop = |name: &[u8]| -> Option<u32> {
+// 		let Some(p) = intern(&conn, name) else { return None };
+// 		let root = conn.setup().roots[0].root;
+// 		let r = conn.get_property(false, root, p, AtomEnum::WINDOW, 0, 8).ok()?.reply().ok()?;
+// 		r.value32().and_then(|mut it| it.next())
+// 	};
+// 	let active = read_root_window_prop(b"_NET_ACTIVE_WINDOW");
+// 	let parent_ut = parent.and_then(|p| read_cardinal(p, b"_NET_WM_USER_TIME"));
+// 	let child_ut = read_cardinal(child, b"_NET_WM_USER_TIME");
+// 	eprintln!(
+// 		"[modal-dbg] 活性化要求: 子={child} t={:?} / _NET_ACTIVE_WINDOW={:?} / 親 user_time={:?} / 子 user_time={:?}",
+// 		t, active, parent_ut, child_ut
+// 	);
+// }
 
 /// (診断) ダイアログ窓の WM プロパティとマップ状態を標準エラーへ出力する。
 /// `ERGON_MODAL_DEBUG=1` のときのみ出力する。
-pub fn debug_dump_dialog_props(win: u32) {
-	use x11rb::connection::Connection as _;
-	use x11rb::protocol::xproto::AtomEnum;
-	use x11rb::protocol::xproto::ConnectionExt as _;
-	use x11rb::protocol::xproto::MapState;
-	if std::env::var("ERGON_MODAL_DEBUG").is_err() {
-		return;
-	}
-	let Ok((conn, _screen)) = x11rb::connect(None) else { return };
-	let read_atoms = |prop: u32| -> Vec<String> {
-		let Ok(r) = conn.get_property(false, win, prop, AtomEnum::ATOM, 0, 1024)
-			else { return vec![] };
-		let Ok(r) = r.reply() else { return vec![] };
-		r.value32()
-			.map(|it| {
-				it.map(|a| {
-					conn.get_atom_name(a)
-						.ok()
-						.and_then(|c| c.reply().ok())
-						.map(|n| String::from_utf8_lossy(&n.name).into_owned())
-						.unwrap_or_else(|| format!("{a}"))
-				})
-				.collect()
-			})
-			.unwrap_or_default()
-	};
-	let dump = |name: &str, values: &[String]| {
-		eprintln!("[modal-dbg] {name}: [{}]", values.join(", "));
-	};
-	let atom = |name: &[u8]| -> Option<u32> { intern(&conn, name) };
-	let mut transient_for: Option<u32> = None;
-	if let Some(p) = atom(b"WM_TRANSIENT_FOR") {
-		let v: Vec<u32> = conn
-			.get_property(false, win, p, AtomEnum::WINDOW, 0, 8)
-			.ok()
-			.and_then(|c| c.reply().ok())
-			.and_then(|r| r.value32().map(|it| it.collect()))
-			.unwrap_or_default();
-		transient_for = v.first().copied();
-		eprintln!("[modal-dbg] WM_TRANSIENT_FOR: {:?}", v);
-	}
-	// (診断) WM の管理窓一覧と transient 親の突き合わせ。Mutter は
-	// WM_TRANSIENT_FOR の示す窓が管理表に無いと transient を無効化し、
-	// 親基準の配置を行わない (screen.c の reload_transient_for 参照)。
-	// この突き合わせで「親が管理表に無い」ことを即座に検出できる。
-	if let Some(p) = atom(b"_NET_CLIENT_LIST") {
-		let managed: Vec<u32> = conn
-			.get_property(false, conn.setup().roots[0].root, p, AtomEnum::WINDOW, 0, 1024)
-			.ok()
-			.and_then(|c| c.reply().ok())
-			.and_then(|r| r.value32().map(|it| it.collect()))
-			.unwrap_or_default();
-		if let Some(t) = transient_for {
-			let in_list = managed.iter().any(|w| *w == t);
-			// transient 親の状態 (管理表に無い場合はWMが扱えない)。
-			let state = if in_list { "管理中" } else { "管理表に無い(!)" };
-			eprintln!("[modal-dbg] transient 親 {t}: {state} (管理窓数={})", managed.len());
-		}
-		if let Some(ap) = atom(b"_NET_ACTIVE_WINDOW") {
-			let active: Vec<u32> = conn
-				.get_property(false, conn.setup().roots[0].root, ap, AtomEnum::WINDOW, 0, 8)
-				.ok()
-				.and_then(|c| c.reply().ok())
-				.and_then(|r| r.value32().map(|it| it.collect()))
-				.unwrap_or_default();
-			eprintln!("[modal-dbg] _NET_ACTIVE_WINDOW: {:?} (管理窓: {:?})", active, managed);
-		}
-	}
-	if let Some(p) = atom(b"_NET_WM_STATE") {
-		dump("_NET_WM_STATE", &read_atoms(p));
-	}
-	if let Some(p) = atom(b"_NET_WM_WINDOW_TYPE") {
-		dump("_NET_WM_WINDOW_TYPE", &read_atoms(p));
-	}
-	if let Some(p) = atom(b"_NET_WM_USER_TIME") {
-		let v: Vec<u32> = conn
-			.get_property(false, win, p, AtomEnum::CARDINAL, 0, 1)
-			.ok()
-			.and_then(|c| c.reply().ok())
-			.and_then(|r| r.value32().map(|it| it.collect()))
-			.unwrap_or_default();
-		eprintln!("[modal-dbg] _NET_WM_USER_TIME: {:?}", v);
-	}
-	let attrs = conn.get_window_attributes(win);
-	if let Ok(cookie) = attrs {
-		if let Ok(rep) = cookie.reply() {
-			eprintln!(
-				"[modal-dbg] map_state={:?}",
-				match rep.map_state {
-					MapState::UNMAPPED => "Unmapped",
-					MapState::UNVIEWABLE => "Unviewable",
-					MapState::VIEWABLE => "Viewable",
-					_ => "?",
-				}
-			);
-		}
-	}
-	// 絶対位置 (ルート基準)。WM の配置結果の確認用。
-	let root = conn.setup().roots[0].root;
-	let geom = conn.get_geometry(win);
-	let tr = conn.translate_coordinates(win, root, 0, 0);
-	if let Ok(g) = geom {
-		if let Ok(g) = g.reply() {
-			if let Ok(t) = tr {
-				if let Ok(t) = t.reply() {
-					eprintln!(
-						"[modal-dbg] geometry: {}x{} at root {},{}",
-						g.width, g.height, t.dst_x, t.dst_y
-					);
-				}
-			}
-		}
-	}
-}
+// (診断コード) ERGON_MODAL_DEBUG による実機調査 (debug_dump_dialog_props) で使用したもの。
+// バイナリから排除するためコメントアウト済み。再調査が必要になったら
+// 行頭の // を外し、modal-window/src/child.rs の呼び出し箇所も復活させる。
+// /// (診断) ダイアログ窓の WM プロパティとマップ状態を標準エラーへ出力する。
+// /// `ERGON_MODAL_DEBUG=1` のときのみ出力する。
+// pub fn debug_dump_dialog_props(win: u32) {
+// 	use x11rb::connection::Connection as _;
+// 	use x11rb::protocol::xproto::AtomEnum;
+// 	use x11rb::protocol::xproto::ConnectionExt as _;
+// 	use x11rb::protocol::xproto::MapState;
+// 	if std::env::var("ERGON_MODAL_DEBUG").is_err() {
+// 		return;
+// 	}
+// 	let Ok((conn, _screen)) = x11rb::connect(None) else { return };
+// 	let read_atoms = |prop: u32| -> Vec<String> {
+// 		let Ok(r) = conn.get_property(false, win, prop, AtomEnum::ATOM, 0, 1024)
+// 			else { return vec![] };
+// 		let Ok(r) = r.reply() else { return vec![] };
+// 		r.value32()
+// 			.map(|it| {
+// 				it.map(|a| {
+// 					conn.get_atom_name(a)
+// 						.ok()
+// 						.and_then(|c| c.reply().ok())
+// 						.map(|n| String::from_utf8_lossy(&n.name).into_owned())
+// 						.unwrap_or_else(|| format!("{a}"))
+// 				})
+// 				.collect()
+// 			})
+// 			.unwrap_or_default()
+// 	};
+// 	let dump = |name: &str, values: &[String]| {
+// 		eprintln!("[modal-dbg] {name}: [{}]", values.join(", "));
+// 	};
+// 	let atom = |name: &[u8]| -> Option<u32> { intern(&conn, name) };
+// 	let mut transient_for: Option<u32> = None;
+// 	if let Some(p) = atom(b"WM_TRANSIENT_FOR") {
+// 		let v: Vec<u32> = conn
+// 			.get_property(false, win, p, AtomEnum::WINDOW, 0, 8)
+// 			.ok()
+// 			.and_then(|c| c.reply().ok())
+// 			.and_then(|r| r.value32().map(|it| it.collect()))
+// 			.unwrap_or_default();
+// 		transient_for = v.first().copied();
+// 		eprintln!("[modal-dbg] WM_TRANSIENT_FOR: {:?}", v);
+// 	}
+// 	// (診断) WM の管理窓一覧と transient 親の突き合わせ。Mutter は
+// 	// WM_TRANSIENT_FOR の示す窓が管理表に無いと transient を無効化し、
+// 	// 親基準の配置を行わない (screen.c の reload_transient_for 参照)。
+// 	// この突き合わせで「親が管理表に無い」ことを即座に検出できる。
+// 	if let Some(p) = atom(b"_NET_CLIENT_LIST") {
+// 		let managed: Vec<u32> = conn
+// 			.get_property(false, conn.setup().roots[0].root, p, AtomEnum::WINDOW, 0, 1024)
+// 			.ok()
+// 			.and_then(|c| c.reply().ok())
+// 			.and_then(|r| r.value32().map(|it| it.collect()))
+// 			.unwrap_or_default();
+// 		if let Some(t) = transient_for {
+// 			let in_list = managed.iter().any(|w| *w == t);
+// 			// transient 親の状態 (管理表に無い場合はWMが扱えない)。
+// 			let state = if in_list { "管理中" } else { "管理表に無い(!)" };
+// 			eprintln!("[modal-dbg] transient 親 {t}: {state} (管理窓数={})", managed.len());
+// 		}
+// 		if let Some(ap) = atom(b"_NET_ACTIVE_WINDOW") {
+// 			let active: Vec<u32> = conn
+// 				.get_property(false, conn.setup().roots[0].root, ap, AtomEnum::WINDOW, 0, 8)
+// 				.ok()
+// 				.and_then(|c| c.reply().ok())
+// 				.and_then(|r| r.value32().map(|it| it.collect()))
+// 				.unwrap_or_default();
+// 			eprintln!("[modal-dbg] _NET_ACTIVE_WINDOW: {:?} (管理窓: {:?})", active, managed);
+// 		}
+// 	}
+// 	if let Some(p) = atom(b"_NET_WM_STATE") {
+// 		dump("_NET_WM_STATE", &read_atoms(p));
+// 	}
+// 	if let Some(p) = atom(b"_NET_WM_WINDOW_TYPE") {
+// 		dump("_NET_WM_WINDOW_TYPE", &read_atoms(p));
+// 	}
+// 	if let Some(p) = atom(b"_NET_WM_USER_TIME") {
+// 		let v: Vec<u32> = conn
+// 			.get_property(false, win, p, AtomEnum::CARDINAL, 0, 1)
+// 			.ok()
+// 			.and_then(|c| c.reply().ok())
+// 			.and_then(|r| r.value32().map(|it| it.collect()))
+// 			.unwrap_or_default();
+// 		eprintln!("[modal-dbg] _NET_WM_USER_TIME: {:?}", v);
+// 	}
+// 	let attrs = conn.get_window_attributes(win);
+// 	if let Ok(cookie) = attrs {
+// 		if let Ok(rep) = cookie.reply() {
+// 			eprintln!(
+// 				"[modal-dbg] map_state={:?}",
+// 				match rep.map_state {
+// 					MapState::UNMAPPED => "Unmapped",
+// 					MapState::UNVIEWABLE => "Unviewable",
+// 					MapState::VIEWABLE => "Viewable",
+// 					_ => "?",
+// 				}
+// 			);
+// 		}
+// 	}
+// 	// 絶対位置 (ルート基準)。WM の配置結果の確認用。
+// 	let root = conn.setup().roots[0].root;
+// 	let geom = conn.get_geometry(win);
+// 	let tr = conn.translate_coordinates(win, root, 0, 0);
+// 	if let Ok(g) = geom {
+// 		if let Ok(g) = g.reply() {
+// 			if let Ok(t) = tr {
+// 				if let Ok(t) = t.reply() {
+// 					eprintln!(
+// 						"[modal-dbg] geometry: {}x{} at root {},{}",
+// 						g.width, g.height, t.dst_x, t.dst_y
+// 					);
+// 				}
+// 			}
+// 		}
+// 	}
+// }
 
 /// 親 (winit メイン窓) を選ぶ。GTK のリーダー窓は `_NET_WM_PID` を持つため
 /// `linux_own_windows` に含まれてしまうが、未マップの InputOnly 窓なので、
