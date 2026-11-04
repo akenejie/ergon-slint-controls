@@ -154,18 +154,36 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 	}
 	#[cfg(all(feature = "winit-modal-hints", unix, not(target_os = "macos")))]
 	{
-		// transient / modal / スタイルは生成時に焼き込まれているためここでは
-		// 触らない (上記のとおり)。マップ前に行うのは user time の補完だけ:
-		// 生成時に接続の最終入力時刻が焼き込まれる (winit フォーク modal.9)
-		// が、プログラム的に開かれた場合など焼き込みが空だったときの保険。
+		// X11 (Linux / Ubuntu の Mutter で実機調査して確定した設計。v0.3.53〜
+		// v0.3.73 の一連の実験の結論):
 		//
-		// Linux: 子ダイアログへユーザー操作の時刻を設定する。EWMH のフォーカ
-		// ス盗み取り防止は窓の _NET_WM_USER_TIME を見るため、これが無いと「ユ
-		// ーザー操作と無関係に開いた窓」として扱われ、Mutter はフォーカスを与
-		// えない。親窓の時刻は winit フォーク (modal.5) が入力イベントのたび
-		// に自動更新するため、ここでは触らない。時刻の取得は PropertyNotify
-		// トリックで行う (X プロトコルには現在時刻を問い合わせる API が無い)。
-		// 位置指定はしない (WM の責任)。
+		// 1. **WM は窓の管理開始時 (最初のマップ処理) に transient / modal /
+		//    user time / 型 / スタイルを一度だけ読む。** 生成後の変更は間に合
+		//    わないことがある (slint の show() による遅延マップが post-creation
+		//    の書き込みに先勝ちするため)。→ **すべて生成属性に焼き込む**
+		//    (backend.rs の生成フック → winit フォーク modal.6+ の
+		//    with_x11_transient_for / with_x11_modal / with_resizable /
+		//    with_enabled_buttons / with_visible(false))。
+		//    - transient は WM_TRANSIENT_FOR。Mutter は管理開始時にしか解決せ
+		//      ず、親が管理表に無い / 解決できないと**親基準の配置をやめて画面
+		//      中央に置く** (place.c は transient 解決時のみ親中央、それ以外は
+		//      workarea 中央)。
+		//    - modal は _NET_WM_STATE_MODAL。EWMH の ClientMessage はマップ前 /
+		//      未管理の窓には WM に無視されるため、生成時のプロパティが必要。
+		//    - user time は _NET_WM_USER_TIME。無いと「ユーザー操作と無関係に
+		//      開いた窓」としてフォーカスを与えられない。
+		// 2. **マップ後のヒント再送はしない。** WM が表示中の窓の状態変化とし
+		//    て処理し、再装飾 / 再配置 = ちらつきの原因になる (実機で確認)。
+		//    表示位置は WM の責任であり、クライアントが位置を指定・移動して
+		//    もならない。
+		// 3. **マップ後に行うのは user time の補完と活性化要求だけ** (下記)。
+		//
+		// Linux: 子ダイアログへユーザー操作の時刻を補完する。生成時に接続の最
+		// 終入力時刻が焼き込まれる (winit フォーク modal.9) が、プログラム的
+		// に開かれた場合など焼き込みが空だったときの保険。時刻の取得は
+		// PropertyNotify トリックで行う (X プロトコルには現在時刻を問い合わせ
+		// る API が無い)。親窓の時刻は winit フォーク (modal.5) が入力イベン
+		// トのたびに自動更新するため、ここでは触らない。
 		#[cfg(target_os = "linux")]
 		{
 			if let Some(child) = cw.xlib_window() {
@@ -174,22 +192,18 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 				if let Some(t) = t {
 					ergon_slint_controls::gtk::write_user_time(child, t);
 				}
-				// (診断) マップ直前の状態を記録する。
-				ergon_slint_controls::gtk::debug_dump_dialog_props(child);
-				// フォーカスされるまで活性化を続ける (60ms 間隔で確認して要
-				// 求、WM に無視される場合のリトライを兼ねる)。要求のタイムス
-				// タンプは 0 (EWMH の「時刻指定なし」)。Mutter は 0 ならタイム
-				// スタンプによる拒否チェックをスキップして自身で現在時刻を取
-				// 得してフォーカスする。ユーザー操作の直後に開いたダイアログ
-				// の活性化なのでこれで正当。
+				// フォーカスされるまで活性化を続ける (Mutter は管理時に自分で
+				// フォーカスを与えないため、マップ後の活性化要求が 1 回必要。
+				// 詳細は gtk::activate_window_until_focused のドキュメント)。
 				ergon_slint_controls::gtk::activate_window_until_focused(child);
 			}
 		}
 		// 非表示で生成した子ダイアログをここでマップする。
 		cw.set_visible(true);
-		// (診断) マップ / アンマップの遷移を追跡する (ちらつきの切り分け)。
-		#[cfg(target_os = "linux")]
-		ergon_slint_controls::gtk::debug_trace_map_state(cw.xlib_window().map(|x| x as u32));
+		// (診断コード) マップ / アンマップの遷移追跡。コメントアウト済み —
+		// 再調査は src/gtk.rs の debug_trace_map_state を復活させる。
+		// #[cfg(target_os = "linux")]
+		// ergon_slint_controls::gtk::debug_trace_map_state(cw.xlib_window().map(|x| x as u32));
 	}
 	});
 	ergon_slint_controls::dialogs::dialog_push();
