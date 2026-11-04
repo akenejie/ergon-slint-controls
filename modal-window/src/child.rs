@@ -178,6 +178,8 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 				// (診断) マップ直前の状態を記録する。
 				ergon_slint_controls::gtk::debug_dump_dialog_props(child);
 				slint::Timer::single_shot(std::time::Duration::from_millis(300), move || {
+					// (診断) 活性化要求の直前のフォーカス状況。
+					ergon_slint_controls::gtk::debug_dump_activation_context(child, parent_xid, t);
 					// 活性化要求には実時刻を添える (0 だと WM に拒否される)。
 					ergon_slint_controls::gtk::activate_window(child, t.unwrap_or(0));
 					// (診断) マップ完了後 (WM の処理後) の状態を記録する。
@@ -187,6 +189,9 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		}
 		// 非表示で生成した子ダイアログをここでマップする。
 		cw.set_visible(true);
+		// (診断) マップ / アンマップの遷移を追跡する (ちらつきの切り分け)。
+		#[cfg(target_os = "linux")]
+		ergon_slint_controls::gtk::debug_trace_map_state(cw.xlib_window().map(|x| x as u32));
 	}
 	});
 	ergon_slint_controls::dialogs::dialog_push();
