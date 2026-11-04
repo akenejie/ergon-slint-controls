@@ -215,6 +215,9 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 					attrs
 						.with_x11_window_type(vec![WindowType::Dialog])
 						.with_x11_transient_for(if parent != 0 { Some(parent) } else { None })
+						// モーダル状態も生成時に焼き込む (ClientMessage はマップ
+						// 前だと WM に無視されるため、管理開始時に読ませる)。
+						.with_x11_modal(true)
 						.with_visible(false)
 				}
 			})
