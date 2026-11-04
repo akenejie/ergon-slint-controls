@@ -97,6 +97,73 @@ fn set_transient_for(conn: &x11rb::rust_connection::RustConnection, dialog: u32,
 	}
 }
 
+/// X ウィンドウをフォーカスされるまで活性化し続ける (`_NET_ACTIVE_WINDOW`)。
+///
+/// WM が管理を開始した直後の窓への活性化要求は、WM 側のタイミングで無視さ
+/// れることがある (Mutter で実機確認)。マップ直後から 60ms 間隔で
+/// `_NET_ACTIVE_WINDOW` を確認し、フォーカスされていなければ要求を送る。フ
+/// ォーカスされたら、または窓が消えた (閉じられた) ら停止する。要求のタイム
+/// スタンプは 0 (EWMH の「時刻指定なし」)。Mutter は 0 ならタイムスタンプに
+/// よる拒否チェックをスキップして自身で現在時刻を取得してフォーカスする。
+pub fn activate_window_until_focused(win: u32) {
+	use x11rb::connection::Connection as _;
+	use x11rb::protocol::xproto::AtomEnum;
+	use x11rb::protocol::xproto::ConnectionExt as _;
+	use x11rb::protocol::xproto::ClientMessageEvent;
+	use x11rb::protocol::xproto::EventMask;
+	let Ok((conn, _)) = x11rb::connect(None) else { return };
+	let Some(active_atom) = intern(&conn, b"_NET_ACTIVE_WINDOW") else { return };
+	let root = conn.setup().roots[0].root;
+	let focused = move |conn: &x11rb::rust_connection::RustConnection| -> bool {
+		conn.get_property(false, root, active_atom, AtomEnum::WINDOW, 0, 8)
+			.ok()
+			.and_then(|c| c.reply().ok())
+			.and_then(|r| r.value32().and_then(|mut it| it.next()))
+			.map(|w| w == win)
+			.unwrap_or(false)
+	};
+	if focused(&conn) {
+		return;
+	}
+	let ticks = std::cell::Cell::new(0u32);
+	let holder = std::rc::Rc::new(std::cell::RefCell::new(None::<slint::Timer>));
+	let holder2 = holder.clone();
+	let timer = slint::Timer::default();
+	timer.start(
+		slint::TimerMode::Repeated,
+		std::time::Duration::from_millis(60),
+		move || {
+			let n = ticks.get() + 1;
+			ticks.set(n);
+			if n > 20 || focused(&conn) {
+				if let Some(t) = holder2.borrow_mut().take() {
+					t.stop();
+				}
+				return;
+			}
+			// 窓が消えていたら (ダイアログが閉じられたら) 諦める。
+			if conn.get_window_attributes(win).map(|c| c.reply().is_err()).unwrap_or(true) {
+				if let Some(t) = holder2.borrow_mut().take() {
+					t.stop();
+				}
+				return;
+			}
+			let Some(state) = intern(&conn, b"_NET_ACTIVE_WINDOW") else { return };
+			let event = ClientMessageEvent::new(32, win, state, [1u32, 0, 0, 0, 0]).to_owned();
+			let _ = conn
+				.send_event(
+					false,
+					root,
+					EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
+					event,
+				)
+				.map(|c| c.ignore_error());
+			let _ = conn.flush();
+		},
+	);
+	*holder.borrow_mut() = Some(timer);
+}
+
 /// X ウィンドウをアクティブにする (`_NET_ACTIVE_WINDOW` ClientMessage)。
 ///
 /// ウィンドウが WM に管理された (マップされた) 後に呼ぶこと。マップ前に
