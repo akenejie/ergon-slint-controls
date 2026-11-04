@@ -140,7 +140,7 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 	// transient / modal ヒントは winit パッチ フォーク由来の API を使う
 	// (フォーク無しのビルドは compile_error で排除済み)。
 	#[cfg(all(feature = "winit-modal-hints", unix, not(target_os = "macos")))]
-	let parent_xid = parent.with_winit_window(|pw| pw.xlib_window()).flatten();
+	let _parent_xid = parent.with_winit_window(|pw| pw.xlib_window()).flatten();
 	child.with_winit_window(|cw| {
 	// X11 (linux): transient / modal / 固定サイズ / 閉じるボタンのみは**生成時
 	// に焼き込み済み** (backend.rs の生成フック → winit フォーク modal.6+)。
@@ -176,30 +176,13 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 				}
 				// (診断) マップ直前の状態を記録する。
 				ergon_slint_controls::gtk::debug_dump_dialog_props(child);
-				// 活性化要求 (_NET_ACTIVE_WINDOW) のタイムスタンプは 0 を送
-				// る。Mutter は要求タイムスタンプがディスプレイ全体の最新
-				// ユーザーイベント時刻 (display->last_user_time) より古いと
-				// 要求を無視するが、この last_user_time は**自分自身の user
-				// time 書き込み**でも更新されるため、実時刻を添えると自枒に
-				// 拒否される競合がある (実機ログで確認)。タイムスタンプ 0 は
-				// EWMH で「時刻指定なし」を意味し、Mutter は拒否チェックをス
-				// キップして自身で現在時刻を取得してフォーカスする。ユーザー
-				// 操作の直後に開いたダイアログの活性化なのでこれで正当。
-				//
-				// それでも WM 側の都合で無視されることがあるため、時間差で
-				// 2 回送る (フォーカス済みなら再送は無操作で害がない)。
-				slint::Timer::single_shot(std::time::Duration::from_millis(150), move || {
-					// (診断) 活性化要求の直前のフォーカス状況。
-					ergon_slint_controls::gtk::debug_dump_activation_context(child, parent_xid, t);
-					ergon_slint_controls::gtk::activate_window(child, 0);
-					// (診断) マップ完了後 (WM の処理後) の状態を記録する。
-					ergon_slint_controls::gtk::debug_dump_dialog_props(child);
-				});
-				slint::Timer::single_shot(std::time::Duration::from_millis(600), move || {
-					ergon_slint_controls::gtk::activate_window(child, 0);
-					// (診断) 2 回目の活性化後の状態を記録する。
-					ergon_slint_controls::gtk::debug_dump_dialog_props(child);
-				});
+				// フォーカスされるまで活性化を続ける (60ms 間隔で確認して要
+				// 求、WM に無視される場合のリトライを兼ねる)。要求のタイムス
+				// タンプは 0 (EWMH の「時刻指定なし」)。Mutter は 0 ならタイム
+				// スタンプによる拒否チェックをスキップして自身で現在時刻を取
+				// 得してフォーカスする。ユーザー操作の直後に開いたダイアログ
+				// の活性化なのでこれで正当。
+				ergon_slint_controls::gtk::activate_window_until_focused(child);
 			}
 		}
 		// 非表示で生成した子ダイアログをここでマップする。
