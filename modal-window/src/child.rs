@@ -180,8 +180,13 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 				slint::Timer::single_shot(std::time::Duration::from_millis(300), move || {
 					// (診断) 活性化要求の直前のフォーカス状況。
 					ergon_slint_controls::gtk::debug_dump_activation_context(child, parent_xid, t);
-					// 活性化要求には実時刻を添える (0 だと WM に拒否される)。
-					ergon_slint_controls::gtk::activate_window(child, t.unwrap_or(0));
+					// 活性化要求には実時刻を添える (0 だと WM に拒否される)。開窓
+					// 時刻 (t) ではなく**要求直前の新鮮な時刻**を使う: Mutter は
+					// 要求タイムスタンプがフォーカス窓の _NET_WM_USER_TIME より古
+					// いと拒否する。開窓から数百 ms 経つと古い扱いになることがあっ
+					// た (実機ログで t より新しい親の user time が観測されている)。
+					let now = ergon_slint_controls::gtk::current_server_time(child);
+					ergon_slint_controls::gtk::activate_window(child, now.or(t).unwrap_or(0));
 					// (診断) マップ完了後 (WM の処理後) の状態を記録する。
 					ergon_slint_controls::gtk::debug_dump_dialog_props(child);
 				});
