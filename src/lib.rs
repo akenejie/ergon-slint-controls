@@ -2,6 +2,12 @@
 //! チェックボックス / スピンボックス / ツールチップ) と、アプリ非依存の
 //! Rust ユーティリティ (ネイティブダイアログ / プラットフォーム操作)。
 //! アプリ固有のロジックは含まない。
+
+// サンプル (じかん君) の生成コードが `ergon_slint_controls::…` で本クレート
+// を参照できるようにする (外部アプリと同じ from_library 経路にするため。
+// build.rs がサンプル用に DEP_* 環境変数を設定してコンパイルする)。
+extern crate self as ergon_slint_controls;
+
 pub mod cursor;
 pub mod dialogs;
 #[cfg(target_os = "linux")]
@@ -14,13 +20,22 @@ pub mod platform;
 // ergon_slint_controlsSharedGlobals ラッパーが本物の SharedGlobals を差し
 // 替えるため、生成モジュールの名前を一度隔離してから (glob で) 再公開する。
 mod generated {
-	slint::include_modules!();
+	include!(concat!(env!("OUT_DIR"), "/lib.rs"));
 }
 // 生成型 (部品 / 構造体 / グローバル / グローバル内部型) をクレートのルートへ
 // 並べる。アプリの生成コードは from_library 機構で
 // `ergon_slint_controls::<部品名>` / `ergon_slint_controls::Inner<グローバル名>`
 // を直接参照するため、名前はこの位置に無いといけない。
 pub use generated::*;
+
+// サンプル (じかん君) の生成コード。ui/timekeeper.slint を外部アプリと同じ
+// @ergon_slint_controls import 経路でコンパイルしたもの (build.rs 参照)。
+// 外部アプリと同じく、このコンパイル単位のグローバルは from_library で
+// ライブラリと共有される。
+mod timekeeper_app {
+	include!(concat!(env!("OUT_DIR"), "/timekeeper.rs"));
+}
+pub use timekeeper_app::{SessionEntry, TimeKeeperExport, TimeKeeperWindow};
 
 use slint::private_unstable_api::re_exports as sp;
 
