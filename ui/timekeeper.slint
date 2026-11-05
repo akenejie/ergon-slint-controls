@@ -3,22 +3,26 @@
 // メニューバー (& 記法) / ドロップダウン / 小ボタン / トグルボタン /
 // チェックボックス / スピンボックス / ラベルのアクセスキー / ツールチップ。
 //
-// 外部アプリでは `import { ... } from "@ergon_slint_controls"` と書くところを、
-// クレート内のサンプルでは同じコンパイル単位にするため各 ui ファイルから
-// 直接 import している。API の形は同じ。
-
-import { MenuAccessKey, AccessKeyHub, MenuOpenHub, AccessKeyLabel } from "menu-base.slint";
-import { FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView, MenuHintPopup, MenuDismissLayer } from "menu.slint";
-import { Label } from "label.slint";
-import { SmallButton } from "small-button.slint";
-import { ModeToggleButton } from "mode-toggle.slint";
-import { CosmicCheckBox } from "cosmic-checkbox.slint";
-import { SpinBox } from "spinbox.slint";
-import { AppTooltip } from "project-tooltip.slint";
+// 外部アプリと同じ `@ergon_slint_controls` import で参照する (build.rs が
+// 自クレートのライブラリ メタデータを設定してコンパイルする)。この経路で
+// はグローバル (MenuBarTheme を含む) が from_library として共有され、
+// Linux では GTK テーマ色がライブラリ内部で反映される。
+// 注: ライブラリの import 文はファイル内で 1 文にまとめる (生成コードが
+// import 文の数だけ共有グローバル群のフィールドを重複生成するため)。
+import {
+	MenuAccessKey, AccessKeyHub, MenuOpenHub, AccessKeyLabel,
+	FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView,
+	MenuHintPopup, MenuDismissLayer,
+	Label, SmallButton, ModeToggleButton, CosmicCheckBox, SpinBox, AppTooltip,
+} from "@ergon_slint_controls";
+// 「CSV を書き出す」ダイアログは相対 import で同じコンパイル単位に取り込む
+// (export もここから。timekeeper-export.slint 内のライブラリ参照も
+// @ergon_slint_controls で解決される)。
+import { TimeKeeperExport } from "timekeeper-export.slint";
 import { ListView, LineEdit } from "std-widgets.slint";
 // Tooltip は std-widgets ではなく slint の組み込み要素 (import 不要)。
 
-export { MenuAccessKey, AccessKeyHub }
+export { MenuAccessKey, AccessKeyHub, TimeKeeperExport }
 
 // ログ 1 行分 (Rust 側が VecModel で積む)。
 export struct SessionEntry {

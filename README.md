@@ -68,6 +68,11 @@ fn main() {
 `DEP_ERGON_SLINT_CONTROLS_SLINT_LIBRARY_*` メタデータで自動解決される
 (`as_library` コンパイル + `experimental-module-builds`)。build.rs には書かない。
 
+注: ライブラリの import 文は **.slint ファイルごとに 1 文にまとめる**
+(生成コードが import 文の数だけ共有グローバル群のフィールドを重複生成する
+ため。複数ファイルに分かれる場合は、どれか 1 ファイルで import して他の
+ファイルからはそのファイルを相対 import して再利用する)。
+
 ### .slint (マークアップ側の参照)
 
 ```slint
@@ -145,6 +150,13 @@ file-popup := FluentMenuFrame {
 無効行を読み飛ばしながら `current-row` を動かす。パターンは
 examples/timekeeper.rs のキー処理 (Alt+文字で開閉、ArrowUp/Down、Enter、Esc、
 開閉中のアクセスキー発火) をそのまま使える。
+
+**メニューバー / メニューの色** (Linux は GTK テーマ追従、他 OS は Windows 10
+標準風の固定値): アプリ側の設定は不要。`platform::setup_window` を呼ぶと、
+Linux ではその時点で GTK テーマから取得した色 (Chromium ui/gtk と同じ方式)
+がライブラリ内部で `MenuBarTheme` グローバル (menu.slint) へ流し込まれる
+(実体は from_library 共有、プロセスで 1 回だけ取得)。色を変えたい場合は
+`MenuBarTheme` のプロパティを後から上書きできる。
 
 ### 部品
 
