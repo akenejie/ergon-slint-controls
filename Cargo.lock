@@ -1120,10 +1120,11 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "ergon-slint-controls"
-version = "0.3.77"
+version = "0.3.78"
 dependencies = [
  "gdkx11",
  "gtk",
+ "i-slint-core",
  "modal-window",
  "slint",
  "slint-build",

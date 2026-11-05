@@ -161,6 +161,17 @@ Linux ではその時点で GTK テーマから取得した色 (Chromium ui/gtk 
 場合は下線を外してその 2px は背景色)。色を変えたい場合は `MenuBarTheme`
 のプロパティを後から上書きできる。
 
+**UI フォント** (Linux): アプリ側の設定は不要。`platform::setup_window` を
+呼ぶと、Linux ではデスクトップ環境の UI フォント設定 (GTK の
+`gtk-font-name` — GNOME なら `org.gnome.desktop.interface font-name` と同
+じもの) を実行時に読み、表示される各ウィンドウの既定フォントへ適用する
+(ファミリ名のハードコードは無し。デスクトップ環境でフォントを変えれば追
+従)。slint の既定 (fontconfig の `sans-serif` 汎用別名) はデスクトップ環境
+の UI フォントとは別物で、周囲の GTK アプリと書体がズレるため。アプリが
+`default-font-family` / `set_ui_font_family` で指定した値は Linux ではこの
+機能が上書きする。ツールチップ等のポップアップ ウィンドウは対象外 (既定の
+まま)。
+
 ### 部品
 
 | 部品 | 主なプロパティ | コールバック | 備考 |

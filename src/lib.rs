@@ -15,6 +15,8 @@ pub mod gtk;
 pub mod menu;
 mod menu_bar_theme;
 pub mod platform;
+#[cfg(target_os = "linux")]
+mod ui_font;
 
 // 生成コードをルートに置かず `generated` モジュールへ格納する。下の
 // ergon_slint_controlsSharedGlobals ラッパーが本物の SharedGlobals を差し
