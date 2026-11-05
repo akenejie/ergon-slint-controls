@@ -56,6 +56,14 @@ pub fn setup_window<P: slint::ComponentHandle + 'static>(
 	component: &P,
 	theme: TitlebarTheme,
 ) {
+	// メニューバー / メニューのテーマ馴染ませ (Linux は GTK テーマから取得)。
+	// 対象の実体は MenuBarTheme グローバルの from_library 共有分で、ルート
+	// コンポーネントの生成時 (共有グローバル群の生成時) にライブラリへ通知
+	// 済み (lib.rs の ergon_slint_controlsSharedGlobals ラッパー参照)。メイン
+	// スレッドで GTK を初期化して色を取得し、登録済みの全実体へ流し込む。
+	// Windows / macOS では何もしない (既定色のまま)。
+	#[cfg(target_os = "linux")]
+	crate::menu_bar_theme::apply_computed();
 	use slint::winit_030::winit::window::Theme;
 	use slint::winit_030::WinitWindowAccessor;
 	use std::sync::atomic::Ordering::Relaxed;
