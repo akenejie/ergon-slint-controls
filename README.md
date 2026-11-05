@@ -155,8 +155,11 @@ examples/timekeeper.rs のキー処理 (Alt+文字で開閉、ArrowUp/Down、Ent
 標準風の固定値): アプリ側の設定は不要。`platform::setup_window` を呼ぶと、
 Linux ではその時点で GTK テーマから取得した色 (Chromium ui/gtk と同じ方式)
 がライブラリ内部で `MenuBarTheme` グローバル (menu.slint) へ流し込まれる
-(実体は from_library 共有、プロセスで 1 回だけ取得)。色を変えたい場合は
-`MenuBarTheme` のプロパティを後から上書きできる。
+(実体は from_library 共有、プロセスで 1 回だけ取得)。文字色もテーマに追従
+し (テーマの指定が背景と同系で読めない場合は背景の輝度から決めた色へ差し
+替え)、下線はバーが白のときだけ付く (テーマがバーに固有の色を与えている
+場合は下線を外してその 2px は背景色)。色を変えたい場合は `MenuBarTheme`
+のプロパティを後から上書きできる。
 
 ### 部品
 

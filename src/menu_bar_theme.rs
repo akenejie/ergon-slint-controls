@@ -149,6 +149,29 @@ fn mix_color(a: slint::Color, b: slint::Color, t: f64) -> slint::Color {
 }
 
 #[cfg(target_os = "linux")]
+/// 背景に対して読める文字色。テーマの指定が背景と同系 (輝度差が小さい) な
+/// らテーマの指定を疑って、背景の輝度から決めた既定の文字色へ差し替える
+/// (暗色テーマで黒文字が見えなくなるのを防ぐ)。
+fn readable_color(fg: slint::Color, bg: slint::Color) -> slint::Color {
+	const MIN_CONTRAST: f64 = 0.25;
+	if (color_luma(fg) - color_luma(bg)).abs() >= MIN_CONTRAST {
+		return fg;
+	}
+	fallback_fg(bg)
+}
+
+#[cfg(target_os = "linux")]
+/// 背景の輝度から決める既定の文字色 (Windows 10 標準風の半透明黒と、その
+/// 暗色背景向けの反転)。
+fn fallback_fg(bg: slint::Color) -> slint::Color {
+	if color_luma(bg) < 0.5 {
+		slint::Color::from_argb_encoded(0xE6FF_FFFF)
+	} else {
+		slint::Color::from_argb_encoded(0xE600_0000)
+	}
+}
+
+#[cfg(target_os = "linux")]
 /// 背景の抽出 (Chromium ui/gtk/gtk_util.cc の GetBgColorFromStyleContext)。
 /// 背景はグラデーション / 背景画像のことがあるため background-color は使わ
 /// ず、境界を消した上で 24x24 に描画して平均色を取る。親チェーンも描画する
@@ -271,11 +294,20 @@ fn query_gtk_menu_bar_theme() -> MenuBarColors {
 		.and_then(|c| c.downcast::<gtk::Label>().ok())
 		.map(|label| label.style_context())
 		.unwrap_or_else(|| menubar_ctx.clone());
-	let bar_foreground = gtk_fg_color(&bar_label_ctx, Some(bar_background))
-		.or_else(|| gtk_fg_color(&header_ctx, Some(bar_background)))
-		.unwrap_or(slint::Color::from_argb_encoded(0xE600_0000));
-	// 下線は背景と文字の中間 (テーマ依存の境界色クエリをしない簡易派生)。
-	let bar_underline = mix_color(bar_background, bar_foreground, 0.12);
+	let bar_foreground = readable_color(
+		gtk_fg_color(&bar_label_ctx, Some(bar_background))
+			.or_else(|| gtk_fg_color(&header_ctx, Some(bar_background)))
+			.unwrap_or_else(|| fallback_fg(bar_background)),
+		bar_background,
+	);
+	// 下線は「バーが既定の白のまま」のときだけ付ける (Windows 10 標準風の
+	// 見た目)。テーマがバーに固有の色を与えている (白以外) なら下線を外し、
+	// その 2px は背景色にする (下線色を背景色へ揃える)。
+	let bar_underline = if bar_background.as_argb_encoded() == 0xFFFF_FFFF {
+		mix_color(bar_background, bar_foreground, 0.12)
+	} else {
+		bar_background
+	};
 
 	let menu_ctx = menu.style_context();
 	let Some(menu_background) = gtk_bg_color(&menu_ctx) else {
@@ -288,8 +320,11 @@ fn query_gtk_menu_bar_theme() -> MenuBarColors {
 		.and_then(|c| c.downcast::<gtk::Label>().ok())
 		.map(|label| label.style_context())
 		.unwrap_or_else(|| sub.style_context());
-	let menu_foreground = gtk_fg_color(&sub_ctx, Some(menu_background))
-		.unwrap_or(slint::Color::from_argb_encoded(0xE600_0000));
+	let menu_foreground = readable_color(
+		gtk_fg_color(&sub_ctx, Some(menu_background))
+			.unwrap_or_else(|| fallback_fg(menu_background)),
+		menu_background,
+	);
 	// ハイライト (hover) 背景: Chromium の GetBgColor("menu menuitem:hover")。
 	let item_ctx = item.style_context();
 	item_ctx.set_state(gtk::StateFlags::PRELIGHT);
