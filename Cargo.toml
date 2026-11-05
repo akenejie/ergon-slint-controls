@@ -1,6 +1,6 @@
 [package]
 name = "ergon-slint-controls"
-version = "0.3.77"
+version = "0.3.78"
 edition = "2021"
 links = "ergon-slint-controls"
 
@@ -29,6 +29,10 @@ windows-sys = { version = "0.61", features = [
 ] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# ui_font モジュール: デスクトップ環境の UI フォントを各ウィンドウの
+# WindowItem (slint core の公開型) へ流し込むための core 直参照。
+# slint 本体と同じバージョンに統一される (=1.17.1)。
+i-slint-core = "1.17.1"
 # cursor::set_custom_cursor は X11 の Render 拡張で ARGB32 のカスタムカーソルを
 # 積む。gtk モジュール / dialogs は x11rb を使い、ダイアログを X 窓レベルで
 # WM_TRANSIENT_FOR 設定して親ウィンドウ基準のモーダル配置にする。winit 0.30 は
@@ -36,7 +40,9 @@ windows-sys = { version = "0.61", features = [
 # から探して change_window_attributes で張り替える。
 x11rb = { version = "0.13", features = ["render", "image"] }
 # gtk モジュール: 同一プロセスから GTK 標準ダイアログ (MessageDialog /
-# FileChooserDialog) をモーダルにブロック実行する。ビルドには libgtk-3-dev
+# FileChooserDialog) をモーダルにブロック実行する。ui_font モジュールは
+# gtk-font-name (デスクトップ環境の UI フォント設定) を読み、フォント名の
+# パースに再 export される pango を使う。ビルドには libgtk-3-dev
 # (pkg-config は `gtk+-3.0`) が必要。
 gtk = "0.18"
 # GTK の GdkWindow から X ウィンドウ ID (XID) を直接取得する。ダイアログの
