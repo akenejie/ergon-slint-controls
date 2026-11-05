@@ -12,6 +12,11 @@ export component TimeKeeperExport inherits Window {
 	preferred-width: 320px;
 	preferred-height: 180px;
 
+	// Linux でライブラリがデスクトップ環境の UI フォントを流し込めるように
+	// する宣言 (動的バインディングが必須。timekeeper.slint のコメント参照)。
+	in property <string> ui-font-family: "";
+	default-font-family: root.ui-font-family;
+
 	// 値 (開くときに Rust が同期する)
 	in-out property <bool> comma: true;    // 区切り (true=カンマ, false=タブ)
 	in-out property <bool> header: true;   // ヘッダー行

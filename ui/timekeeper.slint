@@ -38,6 +38,12 @@ export component TimeKeeperWindow inherits Window {
 	preferred-height: 430px;
 	background: #f7f7f8;
 
+	// Linux でライブラリがデスクトップ環境の UI フォントを流し込めるように
+	// する宣言。動的バインディングが必須 (リテラルや未宣言だとコンパイラが
+	// プロパティを定数化し、実行時に差し替えられなくなる)。
+	in property <string> ui-font-family: "";
+	default-font-family: root.ui-font-family;
+
 	// ---- メニューの状態 ----
 	// どのメニューが開いているかは MenuOpenHub (ライブラリのハブ) が持つ。
 	in-out property <int> menu-index: -1;         // キーボード選択中の行

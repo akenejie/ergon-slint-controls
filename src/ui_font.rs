@@ -18,8 +18,11 @@
 //! 書き込みのタイミングは slint core の window shown フック (show() の中、
 //! set_visible の直後 = 最初の描画より前) で、メイン ウィンドウ以外のすべ
 //! てのウィンドウ (設定ダイアログ / バージョン ダイアログ等) もカバーする。
-//! アプリの .slint が `default-font-family` を宣言していても、表示時点では
-//! 初期化が終わっているのでこの値が優先される (Linux では本機能が既定)。
+//! アプリの .slint が `default-font-family` を動的バインディングで宣言して
+//! いる場合は、表示時点では初期化が終わっているのでこの値が優先される
+//! (Linux では本機能が既定)。宣言が無い / リテラル固定のウィンドウではコ
+//! ンパイラが定数化するため書き込めず (panic防止のガードで何もしない)、
+//! fontconfig の sans-serif のままになる。
 //!
 //! 注: ツールチップなどのポップアップ ウィンドウは show() を通らないため対
 //! 象外 (fontconfig の sans-serif のまま)。ドロップダウン メニューは
@@ -74,10 +77,21 @@ fn de_ui_font_family() -> Option<&'static str> {
 /// ウィンドウのルート項目 (WindowItem — slint core の公開型) へファミリを
 /// 書き込む。Property::set はバインディングを置き換えるので、以後この値が
 /// 使われる。
+///
+/// ただし `default-font-family` が宣言されていない (またはリテラル固定の)
+/// ウィンドウでは、コンパイラがこのプロパティを読み取り側も含めて定数化す
+/// るため、実行時の書き込みは不可能 (set すると panic する)。その場合は何
+/// もせず fontconfig の sans-serif のままにする。機能を有効にするにはアプ
+/// リの .slint で `in property <string>` への動的バインディングとして
+/// `default-font-family` を宣言すること (timekeeper.slint の記述を参照)。
 fn apply_to_window(adapter: &sp::Rc<dyn sp::WindowAdapter>, family: &str) {
 	let window = adapter.window();
 	let Some(root) = sp::WindowInner::from_pub(window).try_component() else { return };
 	let root_item = ItemRc::new_root(root);
 	let Some(window_item) = root_item.downcast::<WindowItem>() else { return };
-	window_item.as_pin_ref().default_font_family.set(family.into());
+	let window_item = window_item.as_pin_ref();
+	if window_item.default_font_family.is_constant() {
+		return;
+	}
+	window_item.default_font_family.set(family.into());
 }
