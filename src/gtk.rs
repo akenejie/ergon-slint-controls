@@ -286,7 +286,7 @@ pub fn current_server_time(win: u32) -> Option<u32> {
 /// (ちらつきの原因) を切り分けるためのもの。
 // (診断コード) ERGON_MODAL_DEBUG による実機調査 (debug_trace_map_state) で使用したもの。
 // バイナリから排除するためコメントアウト済み。再調査が必要になったら
-// 行頭の // を外し、modal-window/src/child.rs の呼び出し箇所も復活させる。
+// 行頭の // を外し、src/modal_dialog/child.rs の呼び出し箇所も復活させる。
 // /// (診断) 窓のマップ状態と `_NET_WM_STATE` の遷移を 10ms 間隔で約 800ms 追
 // /// 踪し、変化したときだけ標準エラーへ出力する。`ERGON_MODAL_DEBUG=1` のとき
 // /// のみ動作する。マップ → withdraw → 再マップのような WM による二重管理
@@ -357,7 +357,7 @@ pub fn current_server_time(win: u32) -> Option<u32> {
 /// るため、拒否の切り分けに使う。`ERGON_MODAL_DEBUG=1` のときのみ出力する。
 // (診断コード) ERGON_MODAL_DEBUG による実機調査 (debug_dump_activation_context) で使用したもの。
 // バイナリから排除するためコメントアウト済み。再調査が必要になったら
-// 行頭の // を外し、modal-window/src/child.rs の呼び出し箇所も復活させる。
+// 行頭の // を外し、src/modal_dialog/child.rs の呼び出し箇所も復活させる。
 // /// (診断) 活性化要求の直前のフォーカス状況を出力する。Mutter は要求のタイ
 // /// ムスタンプがフォーカス窓の `_NET_WM_USER_TIME` より古いと活性化を拒否す
 // /// るため、拒否の切り分けに使う。`ERGON_MODAL_DEBUG=1` のときのみ出力する。
@@ -393,7 +393,7 @@ pub fn current_server_time(win: u32) -> Option<u32> {
 /// `ERGON_MODAL_DEBUG=1` のときのみ出力する。
 // (診断コード) ERGON_MODAL_DEBUG による実機調査 (debug_dump_dialog_props) で使用したもの。
 // バイナリから排除するためコメントアウト済み。再調査が必要になったら
-// 行頭の // を外し、modal-window/src/child.rs の呼び出し箇所も復活させる。
+// 行頭の // を外し、src/modal_dialog/child.rs の呼び出し箇所も復活させる。
 // /// (診断) ダイアログ窓の WM プロパティとマップ状態を標準エラーへ出力する。
 // /// `ERGON_MODAL_DEBUG=1` のときのみ出力する。
 // pub fn debug_dump_dialog_props(win: u32) {

@@ -1,6 +1,6 @@
 [package]
 name = "ergon-slint-controls"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 links = "ergon-slint-controls"
 
@@ -12,20 +12,20 @@ default = []
 # モーダル ダイアログ制御 (子ウィンドウ / ウィンドウ内オーバーレイ)。
 # 有効にすると patched winit fork が必要になる (README 参照)。メニューや
 # ネイティブ ダイアログだけを使うアプリは有効化しなくてよい。
-modal-window = ["dep:i-slint-backend-winit"]
+modal-dialog = ["dep:i-slint-backend-winit"]
 # 全 OS で子ウィンドウ方式 / ウィンドウ内オーバーレイ方式に固定する。
-force-child-window = ["modal-window"]
-force-in-window-overlay = ["modal-window"]
+force-child-window = ["modal-dialog"]
+force-in-window-overlay = ["modal-dialog"]
 
 [[example]]
 name = "timekeeper"
-required-features = ["force-child-window"]
+required-features = ["modal-dialog"]
 
 [dependencies]
 # アプリと同じ slint インスタンスが使われる (Cargo の feature 統合)。
 # 生成コードが参照する型・backend を揃えるため、アプリ側と同じ features を指定する。
 slint = { version = "1.17", features = ["std", "backend-winit", "renderer-femtovg", "compat-1-2", "unstable-winit-030"] }
-# modal-window feature: 子ダイアログ生成時の OS 属性フック
+# modal-dialog feature: 子ダイアログ生成時の OS 属性フック
 # (window_attributes_hook) を仕込むための winit バックエンド。
 i-slint-backend-winit = { version = "1.17.1", features = ["renderer-femtovg"], optional = true }
 
@@ -72,7 +72,7 @@ gdkx11 = "0.18"
 # as_library() を使うには experimental-module-builds が必要。
 slint-build = { version = "1.17", features = ["experimental-module-builds"] }
 
-# modal-window feature は生成時ダイアログ枠のため winit パッチ フォークを
+# modal-dialog feature は生成時ダイアログ枠のため winit パッチ フォークを
 # 必須とする。Cargo の仕様上 [patch] はビルドのルートにしか書けないため、
 # 本ワークスペース自身のビルド/テスト用にここにも置く (feature を有効にする
 # 利用アプリも同じ 1 行を置く必要がある)。

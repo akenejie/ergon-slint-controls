@@ -31,7 +31,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 // the owner to MessageBoxW makes the box application-modal: while it is up the
 // parent window cannot be selected (clicking it just flashes/shakes, the stock
 // Windows behaviour). Without an owner HWND the box degrades to modeless
-// behaviour and the parent stays selectable. Shared with modal_window's child
+// behaviour and the parent stays selectable. Shared with modal_dialog's child
 // dialogs via crate::owner.
 /// 初期化済みなら親ウィンドウの HWND を覚え、モーダルダイアログの親に使う。
 /// 一度だけ設定する (ウィンドウが再生成されても最初の HWND を維持)。

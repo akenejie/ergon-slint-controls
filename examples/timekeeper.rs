@@ -13,7 +13,7 @@
 //   フォーカス
 // - dialogs: フォルダ選択 / Yes-No 確認 / カスタム ボタン / 情報表示 /
 //   表示中の親入力遮断 / 自前の遮断区間 (dialog_push / dialog_pop)
-// - modal_window: 「CSV を書き出す」ダイアログの子ウィンドウ方式 + ウィンドウ内
+// - modal_dialog: 「CSV を書き出す」ダイアログの子ウィンドウ方式 + ウィンドウ内
 //   オーバーレイ方式 (ModalSlot / ModalChild / OverlayHost / overlay_key_filter)
 // - platform: タイトルバー テーマ / 修飾キーの直接読み / (Windows) ウィンドウ
 //   アイコン / owner HWND
@@ -27,7 +27,7 @@
 
 use ergon_slint_controls::menu::{access_key_char, parse_access_key, pressed_char};
 use ergon_slint_controls::{AccessKeyHub, MenuAccessKey, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
-use ergon_slint_controls::modal_window::OverlayHost as _;
+use ergon_slint_controls::modal_dialog::OverlayHost as _;
 use slint::{winit_030::{winit, EventResult, WinitWindowAccessor}, ComponentHandle as _, Model as _};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -84,11 +84,11 @@ fn next_enabled_row(
 	-1
 }
 
-/// 「書き出す」ダイアログのラッパ。modal_window の ModalChild トレイトを実装
+/// 「書き出す」ダイアログのラッパ。modal_dialog の ModalChild トレイトを実装
 /// する (window / show / hide / accept / cancel の 5 メソッドのみ)。
 struct ExportDialog(TimeKeeperExport);
 
-impl ergon_slint_controls::modal_window::ModalChild for ExportDialog {
+impl ergon_slint_controls::modal_dialog::ModalChild for ExportDialog {
 	fn window(&self) -> &slint::Window {
 		self.0.window()
 	}
@@ -108,13 +108,13 @@ impl ergon_slint_controls::modal_window::ModalChild for ExportDialog {
 
 /// ウィンドウ内オーバーレイ方式の「書き出す」パネルのホスト。
 /// 表示の切り替えと確定 / キャンセルの転送だけを書き、二重オープン ガードや
-/// Esc/Enter の読み替えは modal_window が行う。
+/// Esc/Enter の読み替えは modal_dialog が行う。
 struct ExportOverlayHost {
 	weak: slint::Weak<TimeKeeperWindow>,
 	do_export: Rc<dyn Fn()>,
 }
 
-impl ergon_slint_controls::modal_window::OverlayHost for ExportOverlayHost {
+impl ergon_slint_controls::modal_dialog::OverlayHost for ExportOverlayHost {
 	fn is_open(&self) -> bool {
 		self.weak.upgrade().map_or(false, |ui| ui.get_export_overlay_visible())
 	}
@@ -168,10 +168,10 @@ fn fmt_mmss(secs: i64) -> String {
 }
 
 fn main() -> Result<(), slint::PlatformError> {
-	// winit バックエンドの準備は modal_window へ委譲する。子ウィンドウ モード
+	// winit バックエンドの準備は modal_dialog へ委譲する。子ウィンドウ モード
 	// では、ここでモーダル子ダイアログの生成属性フック (Windows: ダイアログ枠 +
 	// 所有ウィンドウ / X11: _NET_WM_WINDOW_TYPE_DIALOG) が仕込まれる。
-	ergon_slint_controls::modal_window::prepare_backend()?;
+	ergon_slint_controls::modal_dialog::prepare_backend()?;
 	let ui = TimeKeeperWindow::new()?;
 
 	// `&` 記法のパースをライブラリ実装へ差し込む (必須)。記法の解釈 (Win32
@@ -328,7 +328,7 @@ fn main() -> Result<(), slint::PlatformError> {
 	};
 
 	// ---------- 「書き出す」ダイアログ ----------
-	let export_slot: ergon_slint_controls::modal_window::ModalSlot = Default::default();
+	let export_slot: ergon_slint_controls::modal_dialog::ModalSlot = Default::default();
 	let export_overlay_host = Rc::new(ExportOverlayHost {
 		weak: ui.as_weak(),
 		do_export: do_export.clone(),
@@ -345,13 +345,13 @@ fn main() -> Result<(), slint::PlatformError> {
 	/// 子ウィンドウ方式で「書き出す」ダイアログを開く。
 	fn open_export(
 		main: &TimeKeeperWindow,
-		slot: &ergon_slint_controls::modal_window::ModalSlot,
+		slot: &ergon_slint_controls::modal_dialog::ModalSlot,
 		do_export: Rc<dyn Fn()>,
 	) {
-		if ergon_slint_controls::modal_window::MODAL_MODE.is_in_window_overlay() {
+		if ergon_slint_controls::modal_dialog::MODAL_MODE.is_in_window_overlay() {
 			// メインウィンドウ内のオーバーレイで開く (二重オープン ガード付き)。
 			let host = ExportOverlayHost { weak: main.as_weak(), do_export };
-			ergon_slint_controls::modal_window::open_overlay(&host);
+			ergon_slint_controls::modal_dialog::open_overlay(&host);
 			return;
 		}
 		// 子ウィンドウ方式: 生成と値の同期はこちら、表示と制御はライブラリ。
@@ -361,7 +361,7 @@ fn main() -> Result<(), slint::PlatformError> {
 		// 次のウィンドウ生成がこのウィンドウのモーダル子ダイアログだとライブラ
 		// リへ伝える (X11 では transient 親も生成時に焼き込む)。
 		#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
-		ergon_slint_controls::modal_window::mark_next_child_dialog_of(main.window());
+		ergon_slint_controls::modal_dialog::mark_next_child_dialog_of(main.window());
 
 		let Ok(dlg) = TimeKeeperExport::new() else { return };
 		// 表示直前に現在値を同期する。
@@ -380,7 +380,7 @@ fn main() -> Result<(), slint::PlatformError> {
 					m.set_export_comma(d.get_comma());
 					m.set_export_header(d.get_header());
 					m.set_export_bom(d.get_bom());
-					ergon_slint_controls::modal_window::close_child_modal(&slot, m.window());
+					ergon_slint_controls::modal_dialog::close_child_modal(&slot, m.window());
 					do_export();
 				}
 			});
@@ -391,12 +391,12 @@ fn main() -> Result<(), slint::PlatformError> {
 			let main_weak = main.as_weak();
 			dlg.on_cancel(move || {
 				if let Some(m) = main_weak.upgrade() {
-					ergon_slint_controls::modal_window::close_child_modal(&slot, m.window());
+					ergon_slint_controls::modal_dialog::close_child_modal(&slot, m.window());
 				}
 			});
 		}
 		// 表示とモーダル化 (Esc/Enter・中央配置・破棄) はライブラリへ任せる。
-		ergon_slint_controls::modal_window::open_child_modal(slot, main, Rc::new(ExportDialog(dlg)));
+		ergon_slint_controls::modal_dialog::open_child_modal(slot, main, Rc::new(ExportDialog(dlg)));
 	}
 
 	// ---------- メニューのコールバック ----------
@@ -593,8 +593,8 @@ fn main() -> Result<(), slint::PlatformError> {
 		use winit::keyboard::KeyCode;
 
 		// オーバーレイ式モーダル表示中のキー (Esc=キャンセル / Enter=確定、
-		// 他は握り潰し) は modal_window へ委譲する。
-		if ergon_slint_controls::modal_window::overlay_key_filter(&*export_overlay_host, code, key_event.repeat) {
+		// 他は握り潰し) は modal_dialog へ委譲する。
+		if ergon_slint_controls::modal_dialog::overlay_key_filter(&*export_overlay_host, code, key_event.repeat) {
 			return EventResult::PreventDefault;
 		}
 

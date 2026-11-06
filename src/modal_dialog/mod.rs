@@ -44,7 +44,7 @@
 //!   それ以外 = ウィンドウ内ポップアップ)
 //!
 //! [`ModalMode`] の値は [`MODAL_MODE`] 定数として公開されるので、アプリ側の
-//! 分岐は `if ergon_slint_controls::modal_window::MODAL_MODE.is_in_window_overlay() { ... }`
+//! 分岐は `if ergon_slint_controls::modal_dialog::MODAL_MODE.is_in_window_overlay() { ... }`
 //! と書ける。
 //!
 //! [`MODAL_MODE`] は `const` なので、選ばれなかった側の実装は release ビルド
@@ -66,7 +66,7 @@
 //!   `WM_TRANSIENT_FOR` / `_NET_WM_STATE_MODAL` を付ける
 //!   (`_NET_WM_WINDOW_TYPE_DIALOG` は上流 API で生成時に付与)
 //!
-//! このフォークは `modal-window` feature を有効にしたときだけ必要になる
+//! このフォークは `modal-dialog` feature を有効にしたときだけ必要になる
 //! (`default` は feature 無効なので、メニュー / ネイティブダイアログだけを使う
 //! アプリは fork を要求されない)。Cargo の `[patch.crates-io]` は**ビルドの
 //! ルート (アプリ) の manifest でしか有効にならず、ライブラリから消費側へ伝播

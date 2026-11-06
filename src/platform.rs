@@ -25,7 +25,7 @@ static APPLIED_TITLEBAR_THEME: std::sync::atomic::AtomicU8 =
 	std::sync::atomic::AtomicU8::new(0);
 
 /// [`setup_window`] で明示指定したテーマ (未指定なら `None`)。
-/// modal-window が子ダイアログを親に揃えるのに使う。
+/// modal_dialog が子ダイアログを親に揃えるのに使う。
 pub fn applied_titlebar_theme() -> Option<TitlebarTheme> {
 	use std::sync::atomic::Ordering::Relaxed;
 	match APPLIED_TITLEBAR_THEME.load(Relaxed) {
@@ -49,9 +49,9 @@ pub fn applied_titlebar_theme() -> Option<TitlebarTheme> {
 /// winit ウィンドウは外観クエリ待ちで生成が遅れることがあるため、生成を待
 /// つ非同期タスクで適用する (生成済みなら即時)。ウィンドウ生成直後に呼ぶ。
 ///
-/// モーダル子ダイアログのテーマは modal-window が既定で親に揃えるため、
+/// モーダル子ダイアログのテーマは modal_dialog が既定で親に揃えるため、
 /// アプリが個別に指定する必要はない。子ダイアログのユーザー操作時刻も
-/// modal-window が親の値から設定する。
+/// modal_dialog が親の値から設定する。
 pub fn setup_window<P: slint::ComponentHandle + 'static>(
 	component: &P,
 	theme: TitlebarTheme,

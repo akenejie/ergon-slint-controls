@@ -14,8 +14,8 @@ pub mod dialogs;
 pub mod gtk;
 pub mod menu;
 mod menu_bar_theme;
-#[cfg(feature = "modal-window")]
-pub mod modal_window;
+#[cfg(feature = "modal-dialog")]
+pub mod modal_dialog;
 #[cfg(windows)]
 mod owner;
 pub mod platform;

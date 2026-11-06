@@ -166,7 +166,7 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 					return apply_next_child_theme(false, attrs);
 				}
 				// ダイアログ枠と位置 (表示直前の所有者中央配置) は winit パッチ
-				// フォーク由来の API (fork は modal-window feature が要求する)。
+				// フォーク由来の API (fork は modal-dialog feature が要求する)。
 				let attrs = attrs.with_dialog_modal_frame(true);
 				let owner = crate::owner::owner_hwnd();
 				let attrs = if owner.is_null() {
