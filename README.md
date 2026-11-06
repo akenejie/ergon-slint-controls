@@ -12,14 +12,15 @@ Windows 風の `&` アクセスキー」を 1 つのライブラリで揃える�
 |---|---|---|
 | Slint 部品 | メニューバー / 小ボタン / トグルボタン / チェックボックス / スピンボックス / ラベル / ツールチップ | `.slint` 内で `import { ... } from "@ergon_slint_controls"` |
 | Rust ユーティリティ | `menu` (`&` 記法パース) / `dialogs` (ネイティブ ダイアログ) / `platform` (タイトルバー・アイコン・修飾キー) / `cursor` (カーソル制御) / `gtk` (Linux) | `use ergon_slint_controls::...` |
-| modal-window | モーダル ダイアログ制御ライブラリ (同梱サブクレート) | `use modal_window::...` |
+| `modal_window` | モーダル ダイアログ制御 (feature `modal-window` / 既定オフ) | `use ergon_slint_controls::modal_window::...` |
 
 **完全に動くサンプルが `examples/timekeeper.rs`** (作業時間トラッカー「じかん君」)。
 全機能を実際に配線したコードはここにある。この README は API の解説であり、
-ライブラリに触る要点だけを載せる。
+ライブラリに触る要点だけを載せる。サンプルは `modal_window` を使うため、
+実行時に feature を有効にする (`[[example]] required-features` で宣言済み)。
 
 ```sh
-cargo run --example timekeeper
+cargo run --example timekeeper --features force-child-window
 ```
 
 (サンプルは左下ポップアップ方式 + `MenuDismissLayer` による外側クリック閉じ。
@@ -35,22 +36,26 @@ cargo run --example timekeeper
 [dependencies]
 # slint 本体。ergon-slint-controls と同じ feature セットにする。
 slint = { version = "1.17", features = ["std", "backend-winit", "renderer-femtovg", "compat-1-2", "unstable-winit-030"] }
-# バックエンドも明示 (modal_window::prepare_backend が生成属性フックを仕込む)。
-i-slint-backend-winit = { version = "1.17.1", features = ["renderer-femtovg"] }
 # 本ライブラリ (バージョンは git タグで固定)。
-ergon-slint-controls = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.3.43" }
-# モーダル制御 (同梱サブクレート)。方式は feature で固定できる。
-modal-window = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.3.43", features = ["force-child-window"] }
+# モーダル制御も使うなら feature を有効にする (方式は feature で固定できる)。
+ergon-slint-controls = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.4.0", features = ["force-child-window"] }
+# モーダル制御を使わない (メニュー / ネイティブ ダイアログだけ) なら feature 無し。
+# ergon-slint-controls = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.4.0" }
 
 [build-dependencies]
 # experimental-module-builds は必須 (下の @import 解決の仕組み)。
 slint-build = { version = "1.17", features = ["experimental-module-builds"] }
 
-# modal-window は生 winit のパッチ フォークを必要とする。
+# modal-window feature は生 winit のパッチ フォークを必要とする (既定オフなら不要)。
 # Cargo の仕様で [patch] はビルドのルート (アプリ) に置く。
 [patch.crates-io]
-winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.3" }
+winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.10" }
 ```
+
+`modal-window` feature を有効にすると、子ダイアログを生成時点から正しい OS
+属性で作るために winit パッチ フォークが必要になる (上の `[patch.crates-io]`)。
+feature を無効にしたビルドはフォーク不要で、メニュー / ネイティブ ダイアログ
+だけを使うアプリはそのまま動く。
 
 Linux は `libgtk-3-dev` + `pkg-config` が必要 (同一プロセス GTK ダイアログ用)。
 
@@ -89,7 +94,7 @@ export { MenuAccessKey, AccessKeyHub }
 ```rust
 use ergon_slint_controls::menu::{parse_access_key, access_key_char, pressed_char};
 use ergon_slint_controls::{AccessKeyHub, AccessKeyParts, MessageIcon, ...};
-use modal_window::{ModalSlot, ModalChild, OverlayHost, ...};
+use ergon_slint_controls::modal_window::{ModalSlot, ModalChild, OverlayHost, ...};
 ```
 
 ---
@@ -339,7 +344,7 @@ if dialog_active() || stale_input_pending() { return EventResult::PreventDefault
 
 | 関数 | OS | 内容 |
 |---|---|---|
-| `setup_window(&ui, TitlebarTheme::Light / Dark / System)` | 全 OS | 窓の初期設定。装飾テーマの指定 (内部 UI を fluent-light に固定するなら Light を明示。指定しないと UI と装飾の明暗が分裂する) と、X11 では `_NET_WM_USER_TIME` の設定 (フォーカス盗み取り防止。これが無いと WM は以後開くモーダル子ダイアログの親基準配置・フォーカス付与を行わない)。モーダル子ダイアログのテーマとユーザー操作時刻は modal-window が既定で親に揃える |
+| `setup_window(&ui, TitlebarTheme::Light / Dark / System)` | 全 OS | 窓の初期設定。装飾テーマの指定 (内部 UI を fluent-light に固定するなら Light を明示。指定しないと UI と装飾の明暗が分裂する) と、X11 では `_NET_WM_USER_TIME` の設定 (フォーカス盗み取り防止。これが無いと WM は以後開くモーダル子ダイアログの親基準配置・フォーカス付与を行わない)。モーダル子ダイアログのテーマとユーザー操作時刻は `modal_window` が既定で親に揃える |
 | `applied_titlebar_theme()` | 同上 | 現在適用済みのテーマ |
 | `install_window_icon(hwnd, resource_id)` | Windows | exe 埋め込み .ico をタイトルバー / タスクバーへ設定 |
 | `main_window_hwnd(&slint::Window)` | Windows | HWND を取得 |
@@ -370,12 +375,16 @@ if dialog_active() || stale_input_pending() { return EventResult::PreventDefault
 
 ---
 
-## modal-window — モーダル ダイアログ制御
+## `modal_window` — モーダル ダイアログ制御 (feature `modal-window`)
 
 Slint ウィンドウを「モーダル子ダイアログ」として出す仕掛け。ダイアログも
 ウィンドウ マネージャの管理下に置き、所有ウィンドウ / ダイアログ型という
 OS 標準のヒントでモーダル性を伝える。WM がヒントを無視する環境でも、
 ライブラリ側が親の入力遮断を担うため「親より前面 + 親を操作不可」は保たれる。
+
+このモジュールは feature `modal-window` (既定オフ) でのみコンパイルされる。
+有効にすると winit パッチ フォークが必要 (上の `[patch.crates-io]`)。メニュー /
+ネイティブ ダイアログだけを使うアプリは feature を有効にしなくてよい。
 
 | 方式 | 向き | 選び方 |
 |---|---|---|
@@ -390,23 +399,23 @@ OS 標準のヒントでモーダル性を伝える。WM がヒントを無視�
 ```rust
 // 1. main() の最初でバックエンドを準備 (Windows: ダイアログ枠 + 所有ウィンドウ、
 //    X11: _NET_WM_WINDOW_TYPE_DIALOG の生成属性フックを仕込む)
-modal_window::prepare_backend()?;
+ergon_slint_controls::modal_window::prepare_backend()?;
 
 // 2. スロットを用意 (開いていれば Some、閉じたら None を管理)
-let slot: modal_window::ModalSlot = Default::default();
+let slot: ergon_slint_controls::modal_window::ModalSlot = Default::default();
 
 // 3. 開く: ダイアログのラッパ型に ModalChild (window / show / hide / accept /
 //    cancel の 5 メソッド) を実装しておく
 #[cfg(any(windows, all(unix, not(target_os = "macos"))))]
-modal_window::mark_next_window_as_child_dialog();   // 次のウィンドウ生成が子ダイアログ
-modal_window::open_child_modal(&slot, &main, Rc::new(ExportDialog(dlg)));
+ergon_slint_controls::modal_window::mark_next_window_as_child_dialog();   // 次のウィンドウ生成が子ダイアログ
+ergon_slint_controls::modal_window::open_child_modal(&slot, &main, Rc::new(ExportDialog(dlg)));
 //    表示・Esc/Enter の読み替え (accept/cancel へ転送)・中央配置・破棄はライブラリ
 
 // 4. 閉じる (OK / キャンセル ハンドラから。hide ではなく破棄される)
-modal_window::close_child_modal(&slot, main.window());
+ergon_slint_controls::modal_window::close_child_modal(&slot, main.window());
 
 // 5. Windows: メイン ウィンドウ生成後に owner を登録 (1 回でよい)
-modal_window::note_owner_window(winit_window);
+ergon_slint_controls::modal_window::note_owner_window(winit_window);
 ```
 
 中央配置の決定責任は OS の文化に従う: Windows は OS が配置しないため winit
@@ -417,7 +426,7 @@ modal_window::note_owner_window(winit_window);
 
 ```rust
 // パネルのホスト。表示の切り替えと確定 / キャンセルの転送だけを書く:
-impl modal_window::OverlayHost for ExportPanelHost {
+impl ergon_slint_controls::modal_window::OverlayHost for ExportPanelHost {
     fn is_open(&self) -> bool { /* パネル表示中か */ }
     fn open(&self) { /* パネルを表示 */ }
     fn close(&self) { /* パネルを隠す */ }
@@ -425,14 +434,14 @@ impl modal_window::OverlayHost for ExportPanelHost {
     fn cancel(&self) { /* キャンセル (Esc) */ }
     fn will_open(&self) {}   // 省略可
 }
-modal_window::open_overlay(&host);     // 開く (二重オープン ガード付き)
-modal_window::close_overlay(&host);    // 閉じる
+ergon_slint_controls::modal_window::open_overlay(&host);     // 開く (二重オープン ガード付き)
+ergon_slint_controls::modal_window::close_overlay(&host);    // 閉じる
 ```
 
 Esc / Enter の転送は winit フックから:
 
 ```rust
-if modal_window::overlay_key_filter(&*host, code, key_event.repeat) {
+if ergon_slint_controls::modal_window::overlay_key_filter(&*host, code, key_event.repeat) {
     return EventResult::PreventDefault;   // オーバーレイが消費した
 }
 ```
@@ -489,8 +498,8 @@ ui.on_menu_item_clicked(move |id| {
 - `Cargo.toml` の `tag = "v..."` でバージョンを固定する
 - 更新するときは **タグの書き換え + `cargo update -p ergon-slint-controls`**
   (ロックの更新を忘れると、タグを変えても古いビルドのままになる)
-- modal-window も同じタグに揃える。winit パッチ フォークのタグは
-  modal-window の要求に従う
+- `modal-window` feature を使う場合、winit パッチ フォークのタグは
+  ライブラリが要求するもの (`v0.30.13-modal.10`) に合わせる
 
 ## ライセンス
 

@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use slint::ComponentHandle;
 
-use crate::{backend, ModalChild, MODAL_MODE};
+use super::{backend, ModalChild, MODAL_MODE};
 
 // --- Windows: タイトルバー整え・所有・中央配置・親の無効化 ---
 
@@ -23,7 +23,7 @@ use crate::{backend, ModalChild, MODAL_MODE};
 // 既に所望のスタイルなら何もしない (フレーム再描画によるちらつきを避ける)。
 #[cfg(windows)]
 pub fn enforce_modal_styles(child: &slint::Window) {
-	use ergon_slint_controls::platform::main_window_hwnd;
+	use crate::platform::main_window_hwnd;
 	use windows_sys::Win32::Graphics::Gdi::{RDW_FRAME, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow};
 	use windows_sys::Win32::UI::WindowsAndMessaging::{
 		GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, GWL_STYLE,
@@ -81,7 +81,7 @@ pub fn enforce_modal_styles(_child: &slint::Window) {}
 // モーダルにする。閉じるときは dismiss_modal_dialog を呼ぶこと。
 #[cfg(windows)]
 pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
-	use ergon_slint_controls::platform::main_window_hwnd;
+	use crate::platform::main_window_hwnd;
 	use windows_sys::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
 	use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWLP_HWNDPARENT};
 	let parent_hwnd = main_window_hwnd(parent);
@@ -109,7 +109,7 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 pub fn dismiss_modal_dialog(parent: &slint::Window) {
 	use windows_sys::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
 	use windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
-	let parent_hwnd = ergon_slint_controls::platform::main_window_hwnd(parent);
+	let parent_hwnd = crate::platform::main_window_hwnd(parent);
 	if parent_hwnd.is_null() {
 		return;
 	}
@@ -138,8 +138,8 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 	// マネージャが「暗黙のモーダル」として扱う。加えて親の入力を ergon の
 	// dialogs で落とす (WM がヒントを無視する環境の保険)。
 	// transient / modal ヒントは winit パッチ フォーク由来の API を使う
-	// (フォーク無しのビルドは compile_error で排除済み)。
-	#[cfg(all(feature = "winit-modal-hints", unix, not(target_os = "macos")))]
+	// (fork は modal-window feature が要求する)。
+	#[cfg(all(unix, not(target_os = "macos")))]
 	let _parent_xid = parent.with_winit_window(|pw| pw.xlib_window()).flatten();
 	child.with_winit_window(|cw| {
 	// X11 (linux): transient / modal / 固定サイズ / 閉じるボタンのみは**生成時
@@ -152,7 +152,7 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		cw.set_resizable(false);
 		cw.set_enabled_buttons(WindowButtons::CLOSE);
 	}
-	#[cfg(all(feature = "winit-modal-hints", unix, not(target_os = "macos")))]
+	#[cfg(all(unix, not(target_os = "macos")))]
 	{
 		// X11 (Linux / Ubuntu の Mutter で実機調査して確定した設計。v0.3.53〜
 		// v0.3.73 の一連の実験の結論):
@@ -188,14 +188,14 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		{
 			if let Some(child) = cw.xlib_window() {
 				let child = child as u32;
-				let t = ergon_slint_controls::gtk::current_server_time(child);
+				let t = crate::gtk::current_server_time(child);
 				if let Some(t) = t {
-					ergon_slint_controls::gtk::write_user_time(child, t);
+					crate::gtk::write_user_time(child, t);
 				}
 				// フォーカスされるまで活性化を続ける (Mutter は管理時に自分で
 				// フォーカスを与えないため、マップ後の活性化要求が 1 回必要。
 				// 詳細は gtk::activate_window_until_focused のドキュメント)。
-				ergon_slint_controls::gtk::activate_window_until_focused(child);
+				crate::gtk::activate_window_until_focused(child);
 			}
 		}
 		// 非表示で生成した子ダイアログをここでマップする。
@@ -203,15 +203,15 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		// (診断コード) マップ / アンマップの遷移追跡。コメントアウト済み —
 		// 再調査は src/gtk.rs の debug_trace_map_state を復活させる。
 		// #[cfg(target_os = "linux")]
-		// ergon_slint_controls::gtk::debug_trace_map_state(cw.xlib_window().map(|x| x as u32));
+		// crate::gtk::debug_trace_map_state(cw.xlib_window().map(|x| x as u32));
 	}
 	});
-	ergon_slint_controls::dialogs::dialog_push();
+	crate::dialogs::dialog_push();
 }
 
 #[cfg(not(windows))]
 pub fn dismiss_modal_dialog(_parent: &slint::Window) {
-	ergon_slint_controls::dialogs::dialog_pop();
+	crate::dialogs::dialog_pop();
 }
 
 // --- セッション管理: 開く / 閉じる / モーダル化の後追い ---
@@ -259,9 +259,9 @@ pub fn open_child_modal<P: ComponentHandle + 'static, C: ModalChild>(
 	{
 		use slint::winit_030::winit::window::Theme;
 		use slint::winit_030::WinitWindowAccessor;
-		let theme = match ergon_slint_controls::platform::applied_titlebar_theme() {
-			Some(ergon_slint_controls::platform::TitlebarTheme::Light) => Some(Theme::Light),
-			Some(ergon_slint_controls::platform::TitlebarTheme::Dark) => Some(Theme::Dark),
+		let theme = match crate::platform::applied_titlebar_theme() {
+			Some(crate::platform::TitlebarTheme::Light) => Some(Theme::Light),
+			Some(crate::platform::TitlebarTheme::Dark) => Some(Theme::Dark),
 			_ => parent.window().with_winit_window(|pw| pw.theme()).flatten(),
 		};
 		backend::set_next_child_theme(theme);
@@ -340,6 +340,7 @@ fn install_event_hook(slot: &ModalSlot) {
 	// イベントごとに再主張して勝たせる。テーマ指定はプロパティ書き換えのみで
 	// ウィンドウ移動のような可視ちらつきはなく、落ち着いた後は OS 標準機構に
 	// 任せる。
+	#[cfg(not(windows))]
 	let theme_until = std::cell::Cell::new(
 		std::time::Instant::now() + std::time::Duration::from_millis(300),
 	);
@@ -372,17 +373,16 @@ fn install_event_hook(slot: &ModalSlot) {
 					if let slint::winit_030::winit::keyboard::PhysicalKey::Code(code) =
 						event.physical_key
 					{
-						use slint::winit_030::winit::keyboard::KeyCode;
-						match code {
-							KeyCode::Escape => {
+						match crate::modal_window::modal_key_action(code) {
+							Some(crate::modal_window::ModalKeyAction::Cancel) => {
 								child.cancel();
 								return EventResult::PreventDefault;
 							}
-							KeyCode::Enter | KeyCode::NumpadEnter => {
+							Some(crate::modal_window::ModalKeyAction::Accept) => {
 								child.accept();
 								return EventResult::PreventDefault;
 							}
-							_ => {}
+							None => {}
 						}
 					}
 				}
@@ -418,7 +418,7 @@ fn apply_modal_when_ready<P: ComponentHandle + 'static>(
 		let child_window = session.child.window();
 		#[cfg(windows)]
 		{
-			!ergon_slint_controls::platform::main_window_hwnd(child_window).is_null()
+			!crate::platform::main_window_hwnd(child_window).is_null()
 		}
 		#[cfg(not(windows))]
 		{

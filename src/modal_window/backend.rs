@@ -6,7 +6,7 @@
 //! 生成時に属性を決める方が確実 (タイトルバーに exe アイコンが一瞬補完される
 //! 之类的な問題を避けられる)。
 
-use crate::MODAL_MODE;
+use super::MODAL_MODE;
 
 // 次に生成するウィンドウがモーダル子ダイアログであることをフックへ伝える
 // フラグ。mark_next_window_as_child_dialog() の直前に立て、フックが swap で
@@ -27,9 +27,8 @@ static NEXT_CHILD_TRANSIENT_PARENT: std::sync::atomic::AtomicU32 =
 // 属性に焼く (X11/macOS は slint バックエンドが生成直後にホストのカラースキーム
 // を流し込むため生成後の set_theme で付け直す — child.rs 参照)。
 static NEXT_CHILD_THEME: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-// (Windows) 子ダイアログの所有者となるメインウィンドウの HWND。
-#[cfg(windows)]
-static OWNER_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+// (Windows) 子ダイアログの所有者となるメインウィンドウの HWND は
+// crate::owner のレジストリをネイティブ ダイアログと共有する。
 
 /// 次に生成する子ダイアログのタイトルバー テーマを指定する。
 /// `None` で継承をやめ、OS 既定に任せる。
@@ -95,6 +94,7 @@ pub fn mark_next_window_as_child_dialog() {
 /// ため、slint が show() を遅延マップする場合などに transient 無しでマップ
 /// されるレースがあり、Mutter は transient 無しで管理した位置 (親基準でな
 /// い) を確定させてしまう。生成時に焼き込むことでこれを防ぐ。
+#[cfg_attr(windows, allow(unused_variables))]
 pub fn mark_next_child_dialog_of(parent: &slint::Window) {
 	mark_next_window_as_child_dialog();
 	#[cfg(all(unix, not(target_os = "macos")))]
@@ -116,7 +116,7 @@ pub fn note_owner_hwnd(hwnd: isize) {
 	if !MODAL_MODE.is_child_window() {
 		return;
 	}
-	OWNER_HWND.store(hwnd, std::sync::atomic::Ordering::Relaxed);
+	crate::owner::set_owner_hwnd(hwnd as *mut core::ffi::c_void);
 }
 
 /// (Windows) 子ダイアログの所有者を Slint ウィンドウから直接登録する。
@@ -128,11 +128,11 @@ pub fn note_owner_window(window: &slint::Window) {
 	if !MODAL_MODE.is_child_window() {
 		return;
 	}
-	let hwnd = ergon_slint_controls::platform::main_window_hwnd(window);
+	let hwnd = crate::platform::main_window_hwnd(window);
 	if hwnd.is_null() {
 		return;
 	}
-	OWNER_HWND.store(hwnd as isize, std::sync::atomic::Ordering::Relaxed);
+	crate::owner::set_owner_hwnd(hwnd);
 }
 
 /// winit バックエンドを明示構築し、子ダイアログ生成フックを仕込む。
@@ -166,17 +166,14 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 					return apply_next_child_theme(false, attrs);
 				}
 				// ダイアログ枠と位置 (表示直前の所有者中央配置) は winit パッチ
-				// フォーク由来の API (フォーク無しのビルドは compile_error で
-				// 排除済み)。
-				#[cfg(feature = "winit-modal-hints")]
+				// フォーク由来の API (fork は modal-window feature が要求する)。
 				let attrs = attrs.with_dialog_modal_frame(true);
-				let owner = OWNER_HWND.load(std::sync::atomic::Ordering::Relaxed);
-				let attrs = if owner == 0 {
+				let owner = crate::owner::owner_hwnd();
+				let attrs = if owner.is_null() {
 					attrs
 				} else {
-					attrs.with_owner_window(owner as _)
+					attrs.with_owner_window(owner as isize)
 				};
-				#[cfg(feature = "winit-modal-hints")]
 				let attrs = attrs.with_dialog_center_over_owner(true);
 				apply_next_child_theme(true, attrs)
 			})
