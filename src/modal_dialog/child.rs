@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use slint::ComponentHandle;
 
-use super::{backend, ModalChild, MODAL_MODE};
+use super::{backend, ModalChild};
 
 // --- Windows: タイトルバー整え・所有・中央配置・親の無効化 ---
 
@@ -234,6 +234,9 @@ pub type WeakModalSlot = std::rc::Weak<RefCell<Option<ModalSession>>>;
 
 /// 子ダイアログを表示し、モーダル子ウィンドウとして整える。
 ///
+/// 子ウィンドウ方式の API。オーバーレイ方式のアプリから呼ばないこと
+/// (方式の選択はアプリ側の [`ModalMode`] 定数で行う)。
+///
 /// 位置の決定責任は OS の文化による: Windows は OS が位置を決めないため
 /// winit パッチ フォークが「表示直前」に所有者の中央へ配置し (ライブラリは
 /// 生成時属性で指示)、Linux は WM が transient を親基準に配置する文化なので
@@ -245,9 +248,6 @@ pub fn open_child_modal<P: ComponentHandle + 'static, C: ModalChild>(
 	parent: &P,
 	child: Rc<C>,
 ) {
-	if !MODAL_MODE.is_child_window() {
-		return;
-	}
 	// 二重オープン ガード (既に開いているときは何もしない)。
 	if slot.borrow().is_some() {
 		return;

@@ -27,7 +27,12 @@
 
 use ergon_slint_controls::menu::{access_key_char, parse_access_key, pressed_char};
 use ergon_slint_controls::{AccessKeyHub, MenuAccessKey, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
-use ergon_slint_controls::modal_dialog::OverlayHost as _;
+use ergon_slint_controls::modal_dialog::{ModalMode, OverlayHost as _};
+
+/// このサンプルのモーダル表示方式。OS ごとの既定に任せる
+/// (Windows = 子ウィンドウ、Linux/macOS = ウィンドウ内オーバーレイ)。
+/// 全 OS で固定したければ ChildWindow / InWindowOverlay を直接書く。
+const MODAL_MODE: ModalMode = ModalMode::default_for_os();
 use slint::{winit_030::{winit, EventResult, WinitWindowAccessor}, ComponentHandle as _, Model as _};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -348,7 +353,7 @@ fn main() -> Result<(), slint::PlatformError> {
 		slot: &ergon_slint_controls::modal_dialog::ModalSlot,
 		do_export: Rc<dyn Fn()>,
 	) {
-		if ergon_slint_controls::modal_dialog::MODAL_MODE.is_in_window_overlay() {
+		if MODAL_MODE.is_in_window_overlay() {
 			// メインウィンドウ内のオーバーレイで開く (二重オープン ガード付き)。
 			let host = ExportOverlayHost { weak: main.as_weak(), do_export };
 			ergon_slint_controls::modal_dialog::open_overlay(&host);

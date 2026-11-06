@@ -18,9 +18,11 @@ Windows 風の `&` アクセスキー」を 1 つのライブラリで揃える�
 全機能を実際に配線したコードはここにある。この README は API の解説であり、
 ライブラリに触る要点だけを載せる。サンプルは `modal_dialog` を使うため、
 実行時に feature を有効にする (`[[example]] required-features` で宣言済み)。
+表示方式はサンプルのソースコード内の定数 (`MODAL_MODE = ModalMode::default_for_os()`)
+で決めている。
 
 ```sh
-cargo run --example timekeeper --features force-child-window
+cargo run --example timekeeper --features modal-dialog
 ```
 
 (サンプルは左下ポップアップ方式 + `MenuDismissLayer` による外側クリック閉じ。
@@ -37,10 +39,12 @@ cargo run --example timekeeper --features force-child-window
 # slint 本体。ergon-slint-controls と同じ feature セットにする。
 slint = { version = "1.17", features = ["std", "backend-winit", "renderer-femtovg", "compat-1-2", "unstable-winit-030"] }
 # 本ライブラリ (バージョンは git タグで固定)。
-# モーダル制御も使うなら feature を有効にする (方式は feature で固定できる)。
-ergon-slint-controls = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.4.0", features = ["force-child-window"] }
+# モーダル制御も使うなら feature を有効にする。表示方式 (子ウィンドウ /
+# オーバーレイ) は feature では決めず、アプリのソースコード内の定数
+# (modal_dialog::ModalMode) で決める。
+ergon-slint-controls = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.5.0", features = ["modal-dialog"] }
 # モーダル制御を使わない (メニュー / ネイティブ ダイアログだけ) なら feature 無し。
-# ergon-slint-controls = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.4.0" }
+# ergon-slint-controls = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.5.0" }
 
 [build-dependencies]
 # experimental-module-builds は必須 (下の @import 解決の仕組み)。
@@ -382,17 +386,31 @@ Slint ウィンドウを「モーダル子ダイアログ」として出す仕�
 OS 標準のヒントでモーダル性を伝える。WM がヒントを無視する環境でも、
 ライブラリ側が親の入力遮断を担うため「親より前面 + 親を操作不可」は保たれる。
 
-このモジュールは feature `modal-dialog` (既定オフ) でのみコンパイルされる。
+このモジュールは**子ウィンドウ方式とオーバーレイ方式の両方の実装**を含み、
+バイナリへ含めるかどうかだけが feature `modal-dialog` (既定オフ) で決まる。
 有効にすると winit パッチ フォークが必要 (上の `[patch.crates-io]`)。メニュー /
 ネイティブ ダイアログだけを使うアプリは feature を有効にしなくてよい。
 
-| 方式 | 向き | 選び方 |
-|---|---|---|
-| `ChildWindow` | 別 OS ウィンドウの子ダイアログ (デスクトップ向き) | feature `force-child-window` |
-| `InWindowOverlay` | メイン ウィンドウ内の暗転オーバーレイ + パネル (モバイル / 車載向き) | feature `force-in-window-overlay` |
+**どちらの方式で出すかは、アプリのソースコード内にフラグとなる定数を書いて
+決める** (ライブラリは方式を知らない。子ウィンドウ方式の API とオーバーレイ
+方式の API の呼み分けはアプリの責任で、その分岐に同じ定数を使う):
 
-既定は OS ごと (`MODAL_MODE.default_for_os()`: Windows = 子ウィンドウ、それ以外 =
-オーバーレイ)。分岐は `MODAL_MODE.is_in_window_overlay()` (const) で問い合わせる。
+```rust
+use ergon_slint_controls::modal_dialog::ModalMode;
+
+/// このアプリのモーダル表示方式 (全 OS で子ウィンドウに固定する例)
+const MODAL_MODE: ModalMode = ModalMode::ChildWindow;
+
+// 分岐はこの定数に対して行う (const なので分岐はコンパイル時に畳み込まれ、
+// release ビルドでは選ばれない側の実装が残らない)
+if MODAL_MODE.is_in_window_overlay() { ... } else { ... }
+```
+
+| 方式 | 向き | 定数 |
+|---|---|---|
+| `ModalMode::ChildWindow` | 別 OS ウィンドウの子ダイアログ (デスクトップ向き) | `const MODAL_MODE: ModalMode = ModalMode::ChildWindow;` |
+| `ModalMode::InWindowOverlay` | メイン ウィンドウ内の暗転オーバーレイ + パネル (モバイル / 車載向き) | `const MODAL_MODE: ModalMode = ModalMode::InWindowOverlay;` |
+| OS ごとの既定 | Windows = 子ウィンドウ、それ以外 = オーバーレイ | `const MODAL_MODE: ModalMode = ModalMode::default_for_os();` |
 
 ### 子ウィンドウ方式の呼び出し順
 
