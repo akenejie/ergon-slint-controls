@@ -18,7 +18,7 @@ Windows 風の `&` アクセスキー」を 1 つのライブラリで揃える�
 全機能を実際に配線したコードはここにある。この README は API の解説であり、
 ライブラリに触る要点だけを載せる。サンプルは `modal_dialog` を使うため、
 実行時に feature を有効にする (`[[example]] required-features` で宣言済み)。
-表示方式はサンプルのソースコード内の定数 (`MODAL_MODE = ModalMode::default_for_os()`)
+表示方式はサンプルのソースコード内の定数 (`MODAL_MODE = ModalMode::ChildWindow`)
 で決めている。
 
 ```sh
