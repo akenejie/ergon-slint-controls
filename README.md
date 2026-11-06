@@ -408,9 +408,11 @@ if MODAL_MODE.is_in_window_overlay() { ... } else { ... }
 
 | 方式 | 向き | 定数 |
 |---|---|---|
-| `ModalMode::ChildWindow` | 別 OS ウィンドウの子ダイアログ (デスクトップ向き) | `const MODAL_MODE: ModalMode = ModalMode::ChildWindow;` |
-| `ModalMode::InWindowOverlay` | メイン ウィンドウ内の暗転オーバーレイ + パネル (モバイル / 車載向き) | `const MODAL_MODE: ModalMode = ModalMode::InWindowOverlay;` |
-| OS ごとの既定 | Windows = 子ウィンドウ、それ以外 = オーバーレイ | `const MODAL_MODE: ModalMode = ModalMode::default_for_os();` |
+| 子ウィンドウ (全 OS) | 別 OS ウィンドウの子ダイアログ (デスクトップ向き) | `const MODAL_MODE: ModalMode = ModalMode::ChildWindow;` |
+| オーバーレイ (全 OS) | メイン ウィンドウ内の暗転オーバーレイ + パネル (モバイル / 車載向き) | `const MODAL_MODE: ModalMode = ModalMode::InWindowOverlay;` |
+| OS で分ける | 例: Windows だけ子ウィンドウ | `const MODAL_MODE: ModalMode = if cfg!(windows) { ModalMode::ChildWindow } else { ModalMode::InWindowOverlay };` |
+
+ライブラリは既定値を持たない (方式の選択は完全にアプリ側の判断)。
 
 ### 子ウィンドウ方式の呼び出し順
 
