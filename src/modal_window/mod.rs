@@ -35,7 +35,7 @@
 //!
 //! ```toml
 //! # 例: win/linux/macos 共にウィンドウ内オーバーレイにする
-//! modal-window = { git = "...", tag = "...", features = ["force-in-window-overlay"] }
+//! ergon-slint-controls = { git = "...", tag = "...", features = ["force-in-window-overlay"] }
 //! ```
 //!
 //! - `force-in-window-overlay` = 全 OS で [`ModalMode::InWindowOverlay`]
@@ -44,8 +44,8 @@
 //!   それ以外 = ウィンドウ内ポップアップ)
 //!
 //! [`ModalMode`] の値は [`MODAL_MODE`] 定数として公開されるので、アプリ側の
-//! 分岐は `if modal_window::MODAL_MODE.is_in_window_overlay() { ... }` と
-//! 書ける。
+//! 分岐は `if ergon_slint_controls::modal_window::MODAL_MODE.is_in_window_overlay() { ... }`
+//! と書ける。
 //!
 //! [`MODAL_MODE`] は `const` なので、選ばれなかった側の実装は release ビルド
 //! (LTO) で dead-code elimination により除去される。
@@ -55,10 +55,9 @@
 //! モーダル子ダイアログの慣習的なスタイルは「アイコン無しのダイアログ枠」
 //! (Windows: `WS_EX_DLGMODALFRAME`)。**Windows はウィンドウ生成後に
 //! タイトルバーのアイコンを消せない** (生成後の Win32 修正は winit のスタイル
-//! 再計算で戻される)。この教訓から、本クレートは子ダイアログを生成時点から
+//! 再計算で戻される)。この教訓から、本モジュールは子ダイアログを生成時点から
 //! 正しい属性で作るため winit パッチ フォーク
-//! (https://github.com/akenejie/slint-modal-winit) を**必須**としている
-//! (feature `winit-modal-hints` が既定で有効、無効化は `compile_error!` で弾く):
+//! (https://github.com/akenejie/slint-modal-winit) を**必須**としている:
 //!
 //! - Windows: `WindowAttributes::with_dialog_modal_frame` で生成時から
 //!   `WS_EX_DLGMODALFRAME` (アイコン無しのダイアログ枠)。`WindowFlags` として
@@ -67,13 +66,16 @@
 //!   `WM_TRANSIENT_FOR` / `_NET_WM_STATE_MODAL` を付ける
 //!   (`_NET_WM_WINDOW_TYPE_DIALOG` は上流 API で生成時に付与)
 //!
-//! Cargo の `[patch.crates-io]` は**ビルドのルート (アプリ) の manifest で
-//! しか有効にならず、ライブラリから消費側へ伝播しない** (Cargo の仕様)。
-//! したがって本クレートを使うアプリは、自分の Cargo.toml に次の 1 行を置く:
+//! このフォークは `modal-window` feature を有効にしたときだけ必要になる
+//! (`default` は feature 無効なので、メニュー / ネイティブダイアログだけを使う
+//! アプリは fork を要求されない)。Cargo の `[patch.crates-io]` は**ビルドの
+//! ルート (アプリ) の manifest でしか有効にならず、ライブラリから消費側へ伝播
+//! しない** (Cargo の仕様)。したがって feature を有効にするアプリは、自分の
+//! Cargo.toml に次の 1 行を置く:
 //!
 //! ```toml
 //! [patch.crates-io]
-//! winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.3" }
+//! winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.10" }
 //! ```
 //!
 //! 本リポジトリ (ergon-slint-controls) のワークスペースも同じパッチを持ち、
@@ -89,19 +91,6 @@
 //! + 所有ウィンドウ / X11: `_NET_WM_WINDOW_TYPE_DIALOG`) 付きで作られる。
 //! オーバーレイ モードでは子ウィンドウを生成しないため、この準備は何もしない
 //! (既定の winit バックエンドに任せる)。
-
-// winit パッチ フォークが無いと子ダイアログを「生成時点からアイコン無しの
-// ダイアログ枠」にできない (Windows は生成後のタイトルバー アイコン除去が
-// 不可能なため)。無効化は設定ミスなので、パッチの当て方とともに明示的に弾く。
-#[cfg(not(feature = "winit-modal-hints"))]
-compile_error!(
-	"modal-window には winit パッチ フォークが必要です (子ダイアログを生成時点から \
-	アイコン無しのダイアログ枠にするため。Windows は生成後のアイコン除去が不可能)。\
-	アプリの Cargo.toml に次を追加してください:\n\
-	[patch.crates-io]\n\
-	winit = { git = \"https://github.com/akenejie/slint-modal-winit\", tag = \"v0.30.13-modal.3\" }\n\
-	(feature winit-modal-hints は既定で有効です)"
-);
 
 pub mod backend;
 pub mod child;
@@ -241,6 +230,25 @@ pub fn close_overlay(host: &dyn OverlayHost) {
 	host.close();
 }
 
+/// モーダル中の Esc / Enter を確定・キャンセルへ読み替える共通処理。
+/// 子ウィンドウのイベントフックとオーバーレイのキー フィルタで共有する。
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ModalKeyAction {
+	Accept,
+	Cancel,
+}
+
+pub(crate) fn modal_key_action(
+	code: slint::winit_030::winit::keyboard::KeyCode,
+) -> Option<ModalKeyAction> {
+	use slint::winit_030::winit::keyboard::KeyCode;
+	match code {
+		KeyCode::Escape => Some(ModalKeyAction::Cancel),
+		KeyCode::Enter | KeyCode::NumpadEnter => Some(ModalKeyAction::Accept),
+		_ => None,
+	}
+}
+
 /// メインウィンドウの winit イベント フックから呼ぶ。
 ///
 /// オーバーレイ表示中は Esc = [`cancel`](OverlayHost::cancel) /
@@ -261,11 +269,10 @@ pub fn overlay_key_filter(
 		return false;
 	}
 	if !repeat {
-		use slint::winit_030::winit::keyboard::KeyCode;
-		match code {
-			KeyCode::Escape => host.cancel(),
-			KeyCode::Enter | KeyCode::NumpadEnter => host.accept(),
-			_ => {}
+		match modal_key_action(code) {
+			Some(ModalKeyAction::Cancel) => host.cancel(),
+			Some(ModalKeyAction::Accept) => host.accept(),
+			None => {}
 		}
 	}
 	true

@@ -31,27 +31,17 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 // the owner to MessageBoxW makes the box application-modal: while it is up the
 // parent window cannot be selected (clicking it just flashes/shakes, the stock
 // Windows behaviour). Without an owner HWND the box degrades to modeless
-// behaviour and the parent stays selectable.
-#[cfg(windows)]
-static DIALOG_OWNER: std::sync::atomic::AtomicPtr<core::ffi::c_void> =
-	std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
-
+// behaviour and the parent stays selectable. Shared with modal_window's child
+// dialogs via crate::owner.
 /// 初期化済みなら親ウィンドウの HWND を覚え、モーダルダイアログの親に使う。
 /// 一度だけ設定する (ウィンドウが再生成されても最初の HWND を維持)。
 #[cfg(windows)]
 pub fn capture_dialog_owner(ui: &slint::Window) {
 	let hwnd = crate::platform::main_window_hwnd(ui);
-	if !hwnd.is_null() {
-		let _ = DIALOG_OWNER.compare_exchange(
-			std::ptr::null_mut(),
-			hwnd,
-			std::sync::atomic::Ordering::Relaxed,
-			std::sync::atomic::Ordering::Relaxed,
-		);
-	}
+	crate::owner::set_owner_hwnd_once(hwnd);
 }
 
-/// TaskDialogIndirect の共通呼び出し。`hwndParent` (DIALOG_OWNER = 親ウィンドウ)
+/// TaskDialogIndirect の共通呼び出し。`hwndParent` (crate::owner = 親ウィンドウ)
 /// を渡すと、OS がタスクダイアログを「親ウィンドウの中央」に配置する
 /// (TaskDialog の既定動作。TDF_POSITION_RELATIVE_TO_WINDOW を付けない場合)。
 /// 位置はアプリ側で一切計算しない。押されたボタンの ID を返す。
@@ -76,7 +66,7 @@ fn task_dialog_center_parent(
 	let message_w = encode_wide(message);
 	let mut config = TASKDIALOGCONFIG::default();
 	config.cbSize = std::mem::size_of::<TASKDIALOGCONFIG>() as u32;
-	config.hwndParent = DIALOG_OWNER.load(std::sync::atomic::Ordering::Relaxed);
+	config.hwndParent = crate::owner::owner_hwnd();
 	// TDF_POSITION_RELATIVE_TO_WINDOW が「hwndParent 基準でセンタリング」を
 	// 有効にする。これを付けない場合、OS は hwndParent を渡していても
 	// 「モニタ基準」でダイアログを配置する (画面中央になる)。
@@ -216,7 +206,7 @@ pub fn show_message_box(title: &str, text: &str, kind: MessageIcon) {
 			MessageIcon::Error => MB_ICONERROR,
 			MessageIcon::Info => MB_ICONINFORMATION,
 		};
-		let owner = DIALOG_OWNER.load(std::sync::atomic::Ordering::Relaxed);
+		let owner = crate::owner::owner_hwnd();
 		unsafe {
 			// 親ウィンドウ中央への移動用に、このスレッド限定の CBT フックを
 			// MessageBoxW の間だけ張る。フックプロシージャ内で移動してから
@@ -725,7 +715,7 @@ pub fn message_box_custom(
 
 		let mut config = TASKDIALOGCONFIG::default();
 		config.cbSize = std::mem::size_of::<TASKDIALOGCONFIG>() as u32;
-		config.hwndParent = DIALOG_OWNER.load(std::sync::atomic::Ordering::Relaxed);
+		config.hwndParent = crate::owner::owner_hwnd();
 		config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW | TDF_USE_HICON_MAIN;
 		config.pszWindowTitle = title_w.as_ptr();
 		config.Anonymous1 = TASKDIALOGCONFIG_0 {
@@ -919,7 +909,7 @@ pub fn prompt_folder(title: &str, initial: Option<&Path>) -> Option<PathBuf> {
 
 	// 親ウィンドウは capture_dialog_owner が記録した HWND。OS はこれを owner
 	// (モーダル) かつ配置の基準 (hwndOwner の中央) として使う。
-	let owner_hwnd = DIALOG_OWNER.load(std::sync::atomic::Ordering::Relaxed);
+	let owner_hwnd = crate::owner::owner_hwnd();
 
 	// IFileDialog は COM コンポーネントなので、使うスレッド上で初期化する。
 	// S_OK ならここで初期化したので後で解放、S_FALSE (既に初期化済み) なら解放しない。
