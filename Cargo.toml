@@ -1,6 +1,6 @@
 [package]
 name = "ergon-slint-controls"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 links = "ergon-slint-controls"
 
@@ -9,13 +9,13 @@ path = "src/lib.rs"
 
 [features]
 default = []
-# モーダル ダイアログ制御 (子ウィンドウ / ウィンドウ内オーバーレイ)。
-# 有効にすると patched winit fork が必要になる (README 参照)。メニューや
-# ネイティブ ダイアログだけを使うアプリは有効化しなくてよい。
+# モーダル ダイアログ制御ロジック全体 (子ウィンドウ方式 + ウィンドウ内
+# オーバーレイ方式の両実装) をコンパイルに含めるかどうかの取捨選択。
+# どちらの方式で出すかはこの feature では決めない (アプリのソースコード内の
+# 定数 modal_dialog::ModalMode で決める。README 参照)。
+# 有効にすると patched winit fork が必要になる。メニューやネイティブ
+# ダイアログだけを使うアプリは有効化しなくてよい。
 modal-dialog = ["dep:i-slint-backend-winit"]
-# 全 OS で子ウィンドウ方式 / ウィンドウ内オーバーレイ方式に固定する。
-force-child-window = ["modal-dialog"]
-force-in-window-overlay = ["modal-dialog"]
 
 [[example]]
 name = "timekeeper"

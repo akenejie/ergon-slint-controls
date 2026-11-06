@@ -6,8 +6,6 @@
 //! 生成時に属性を決める方が確実 (タイトルバーに exe アイコンが一瞬補完される
 //! 之类的な問題を避けられる)。
 
-use super::MODAL_MODE;
-
 // 次に生成するウィンドウがモーダル子ダイアログであることをフックへ伝える
 // フラグ。mark_next_window_as_child_dialog() の直前に立て、フックが swap で
 // 消費する。
@@ -76,11 +74,8 @@ fn apply_next_child_theme(
 /// 次に生成する Slint ウィンドウを「モーダル子ダイアログ」として作るよう
 /// 予約する。生成の直前に呼ぶ。
 ///
-/// オーバーレイ モードでは子ウィンドウを生成しないため何もしない。
+/// 子ウィンドウ方式でのみ呼ぶこと (オーバーレイ方式のアプリは呼ばない)。
 pub fn mark_next_window_as_child_dialog() {
-	if !MODAL_MODE.is_child_window() {
-		return;
-	}
 	#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
 	NEXT_WINDOW_IS_CHILD_DIALOG.store(true, std::sync::atomic::Ordering::Relaxed);
 }
@@ -113,9 +108,6 @@ pub fn mark_next_child_dialog_of(parent: &slint::Window) {
 /// 所有者なしのウィンドウになる (タスクバーに別枠で出るなど)。
 #[cfg(windows)]
 pub fn note_owner_hwnd(hwnd: isize) {
-	if !MODAL_MODE.is_child_window() {
-		return;
-	}
 	crate::owner::set_owner_hwnd(hwnd as *mut core::ffi::c_void);
 }
 
@@ -125,9 +117,6 @@ pub fn note_owner_hwnd(hwnd: isize) {
 /// 本クレート内で行う。メインウィンドウ生成後に 1 度呼ぶ。
 #[cfg(windows)]
 pub fn note_owner_window(window: &slint::Window) {
-	if !MODAL_MODE.is_child_window() {
-		return;
-	}
 	let hwnd = crate::platform::main_window_hwnd(window);
 	if hwnd.is_null() {
 		return;
@@ -138,12 +127,10 @@ pub fn note_owner_window(window: &slint::Window) {
 /// winit バックエンドを明示構築し、子ダイアログ生成フックを仕込む。
 /// `main` の冒頭 (最初のウィンドウ生成前) に呼ぶ。
 ///
-/// オーバーレイ モードでは子ウィンドウを生成しないため、フックも不要。
-/// 何もせず既定の (winit) バックエンドに任せる。
+/// 子ウィンドウ方式のときに呼ぶ。オーバーレイ方式では既定の (winit)
+/// バックエンドでよい (呼んでも、フックは mark_* で予約が立つまで働かない
+/// ため害はない)。
 pub fn prepare_backend() -> Result<(), slint::PlatformError> {
-	if !MODAL_MODE.is_child_window() {
-		return Ok(());
-	}
 	// Windows: 子ダイアログを生成時点からダイアログ枠 (WS_EX_DLGMODALFRAME) +
 	// 所有ウィンドウ付きで作り、タイトルバーのテーマも親に揃える。
 	//

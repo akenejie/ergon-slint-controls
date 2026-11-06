@@ -28,27 +28,33 @@
 //! - [`ModalMode::ChildWindow`]: WM の標準ヒント (所有ウィンドウ / transient /
 //!   modal / dialog 型) を依頼するだけで、always-on-top などの強制はしない。
 //!
-//! # 表示方式の切り替え (アプリ側のフラグ)
+//! # 表示方式 (アプリ側の定数で決める)
 //!
-//! アプリの Cargo.toml で feature を選ぶだけで、OS 毎にバイナリへ焼かれる
-//! 制御が変わる:
+//! このモジュールは子ウィンドウ方式とオーバーレイ方式の**両方の実装**を含み、
+//! バイナリへ含めるかどうかだけが Cargo の feature `modal-dialog` で決まる。
+//! どちらの方式でダイアログを出すかはライブラリ側の設定ではなく、**アプリの
+//! ソースコード内にフラグとなる定数を書いて**決める:
 //!
-//! ```toml
-//! # 例: win/linux/macos 共にウィンドウ内オーバーレイにする
-//! ergon-slint-controls = { git = "...", tag = "...", features = ["force-in-window-overlay"] }
+//! ```rust
+//! use ergon_slint_controls::modal_dialog::ModalMode;
+//!
+//! /// このアプリのモーダル表示方式 (全 OS で子ウィンドウに固定する例)
+//! const MODAL_MODE: ModalMode = ModalMode::ChildWindow;
 //! ```
 //!
-//! - `force-in-window-overlay` = 全 OS で [`ModalMode::InWindowOverlay`]
-//! - `force-child-window` = 全 OS で [`ModalMode::ChildWindow`]
-//! - どちらも無指定 = [`ModalMode::default_for_os`] (Windows = 子ウィンドウ、
+//! - [`ModalMode::ChildWindow`] = 全 OS で子ウィンドウ
+//! - [`ModalMode::InWindowOverlay`] = 全 OS でウィンドウ内オーバーレイ
+//! - [`ModalMode::default_for_os()`] = OS ごとの既定 (Windows = 子ウィンドウ、
 //!   それ以外 = ウィンドウ内ポップアップ)
 //!
-//! [`ModalMode`] の値は [`MODAL_MODE`] 定数として公開されるので、アプリ側の
-//! 分岐は `if ergon_slint_controls::modal_dialog::MODAL_MODE.is_in_window_overlay() { ... }`
-//! と書ける。
-//!
-//! [`MODAL_MODE`] は `const` なので、選ばれなかった側の実装は release ビルド
-//! (LTO) で dead-code elimination により除去される。
+//! アプリ側の分岐はこの定数に対して行う
+//! (`if MODAL_MODE.is_in_window_overlay() { ... }`)。定数はアプリのクレート内
+//! にあるため分岐はコンパイル時に畳み込まれ、release ビルド (LTO) では選ばれ
+//! なかった側の実装も dead-code elimination で除去される。ライブラリの各関数
+//! は方式を知らない (開く / 閉じるだけ)。子ウィンドウ方式の API
+//! ([`backend::prepare_backend`] / [`child::open_child_modal`] 等) と
+//! オーバーレイ方式の API ([`open_overlay`] 等) の呼み分けはアプリの責任で、
+//! その分岐に同じ定数を使う。
 //!
 //! # 子ダイアログのスタイル (アイコン無しのダイアログ枠) — winit フォーク必須
 //!
@@ -83,14 +89,14 @@
 //! v0.30.13 を基準にしたコミット列なので、差分は `git diff v0.30.13..main`
 //! で見え、上流追従は merge で行える。
 //!
-//! # 起動時の準備 (子ウィンドウ モードのみ意味を持つ)
+//! # 起動時の準備 (子ウィンドウ方式のときに呼ぶ)
 //!
 //! [`backend::prepare_backend`] を `main` 冒頭で呼ぶと、以降
 //! [`backend::mark_next_window_as_child_dialog`] の直後に生成される Slint
 //! ウィンドウが「親のモーダル子ダイアログ」用の OS 属性 (Windows: ダイアログ枠
 //! + 所有ウィンドウ / X11: `_NET_WM_WINDOW_TYPE_DIALOG`) 付きで作られる。
-//! オーバーレイ モードでは子ウィンドウを生成しないため、この準備は何もしない
-//! (既定の winit バックエンドに任せる)。
+//! オーバーレイ方式では子ウィンドウを生成しないため、呼ぶ必要はない
+//! (呼んでもフックは mark_* で予約が立つまで働かないため害もない)。
 
 pub mod backend;
 pub mod child;
@@ -103,7 +109,7 @@ pub use child::{
 	open_child_modal, ModalSession, ModalSlot, WeakModalSlot,
 };
 
-// --- 表示方式 (feature 1 箇所で OS 毎の挙動が変わる) ---
+// --- 表示方式 (アプリ側の定数が選ぶ。ライブラリは方式を知らない) ---
 
 /// モーダルの表示方式。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -148,26 +154,6 @@ impl ModalMode {
 	}
 }
 
-// force-* feature の二重指定は設定ミスなので弾く。
-#[cfg(all(feature = "force-in-window-overlay", feature = "force-child-window"))]
-compile_error!(
-	"force-in-window-overlay と force-child-window は同時に指定できません"
-);
-
-/// このバイナリで使うモーダルの表示方式。アプリ側の Cargo.toml で feature を
-/// 選ぶとここに焼かれる:
-///
-/// - `force-in-window-overlay` = 全 OS で [`ModalMode::InWindowOverlay`]
-/// - `force-child-window` = 全 OS で [`ModalMode::ChildWindow`]
-/// - 無指定 = [`ModalMode::default_for_os`]
-pub const MODAL_MODE: ModalMode = if cfg!(feature = "force-in-window-overlay") {
-	ModalMode::InWindowOverlay
-} else if cfg!(feature = "force-child-window") {
-	ModalMode::ChildWindow
-} else {
-	ModalMode::default_for_os()
-};
-
 /// 子ウィンドウ (別 OS ウィンドウ) モーダルのダイアログ側抽象。
 ///
 /// アプリは任意の Slint トップレベル コンポーネントをこのトレイトで包み、
@@ -210,11 +196,8 @@ pub trait OverlayHost {
 
 /// オーバーレイ モーダルを開く (二重オープン ガード付き)。
 ///
-/// 子ウィンドウ モードでは何もしない (定数畳み込みで呼び出し全体が消える)。
+/// オーバーレイ方式の API。子ウィンドウ方式のアプリから呼ばないこと。
 pub fn open_overlay(host: &dyn OverlayHost) {
-	if !MODAL_MODE.is_in_window_overlay() {
-		return;
-	}
 	if host.is_open() {
 		return;
 	}
@@ -223,10 +206,9 @@ pub fn open_overlay(host: &dyn OverlayHost) {
 }
 
 /// オーバーレイ モーダルを閉じる。
+///
+/// オーバーレイ方式の API。子ウィンドウ方式のアプリから呼ばないこと。
 pub fn close_overlay(host: &dyn OverlayHost) {
-	if !MODAL_MODE.is_in_window_overlay() {
-		return;
-	}
 	host.close();
 }
 
@@ -255,16 +237,13 @@ pub(crate) fn modal_key_action(
 /// Enter = [`accept`](OverlayHost::accept) をホストへ転送し、それ以外のキーも
 /// 含めてすべて拾う (下の UI に届かないようにする)。戻り値が `true` のとき
 /// 呼び出し側は `EventResult::PreventDefault` を返してイベントを破棄すること。
-/// オーバーレイ非表示中 / 子ウィンドウ モードでは `false` を返し、
-/// アプリ本来のキー処理を続行させる。
+/// オーバーレイ非表示中は `false` を返し、アプリ本来のキー処理を続行させる。
+/// オーバーレイ方式の API。子ウィンドウ方式のアプリから呼ばないこと。
 pub fn overlay_key_filter(
 	host: &dyn OverlayHost,
 	code: slint::winit_030::winit::keyboard::KeyCode,
 	repeat: bool,
 ) -> bool {
-	if !MODAL_MODE.is_in_window_overlay() {
-		return false;
-	}
 	if !host.is_open() {
 		return false;
 	}
