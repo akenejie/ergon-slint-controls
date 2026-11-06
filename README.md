@@ -10,7 +10,7 @@ Windows 風の `&` アクセスキー」を 1 つのライブラリで揃える�
 
 | 柱 | 内容 | 参照方法 |
 |---|---|---|
-| Slint 部品 | メニューバー / 小ボタン / トグルボタン / チェックボックス / スピンボックス / ラベル / ツールチップ | `.slint` 内で `import { ... } from "@ergon_slint_controls"` |
+| Slint 部品 | メニューバー / 小ボタン / トグルボタン / チェックボックス / スピンボックス / テキストボックス / ラベル / ツールチップ | `.slint` 内で `import { ... } from "@ergon_slint_controls"` |
 | Rust ユーティリティ | `menu` (`&` 記法パース) / `dialogs` (ネイティブ ダイアログ) / `platform` (タイトルバー・アイコン・修飾キー) / `cursor` (カーソル制御) / `gtk` (Linux) | `use ergon_slint_controls::...` |
 | `modal_dialog` | モーダル ダイアログ制御 (feature `modal-dialog` / 既定オフ) | `use ergon_slint_controls::modal_dialog::...` |
 
@@ -200,7 +200,9 @@ default-font-family: root.ui-font-family;
 | `ModeToggleButton` | 同上 | `clicked()` | 群から 1 つ選ぶトグル。`checked` で見た目が変わる |
 | `CosmicCheckBox` | `checked` / `checked-color` | (なし) | 見た目だけのチェックボックス。クリック処理は自前実装 |
 | `SpinBox` | `value` (in-out) / `minimum` / `maximum` / `step-size` / `read-only` / `enabled` / `tooltip-text` / `horizontal-alignment` / `has-focus` | `edited(int)` | 上下ボタン縦並び。数値の直接入力も可 |
+| `TextBox` | `text` (in-out) / `placeholder-text` / `placeholder-color` / `read-only` / `enabled` / `font-size` / `font-weight` / `color` / `selection-background-color` / `selection-foreground-color` / `horizontal-alignment` / `input-type` / `input-method-hints` / `tooltip-text` / `has-focus` | `accepted(string)` / `edited(string)` | 1 行テキスト入力。右クリックで Undo / Redo / Cut / Copy / Paste / Select All のコンテキスト メニュー |
 | `SpinBoxBase` / `SpinBoxButton` | フォント / 選択色 / `icon-width` / `icon-height` | `update-value()` / `increment()` / `decrement()` / `clicked()` | 上級者向けの内部部品 |
+| `TextBoxBase` | 内部 `TextInput` の直プロパティ (`text` / フォント / 選択色 / `margin` など) | `select-all()` / `cut()` / `copy()` / `paste()` / `undo()` / `redo()` / `set-selection-offsets()` | 上級者向けの内部部品 (`TextBox` も `select-all` 等を forwarding する) |
 | `AppTooltip` | `text` / `padding-h` / `padding-v` | (なし) | 組み込み `Tooltip` 要素 (slint 本体の機能) の中身として使う |
 
 ### グローバル

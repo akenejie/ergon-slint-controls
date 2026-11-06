@@ -1,0 +1,238 @@
+// TextBox (1 行テキスト入力)
+// slint 標準 (fluent) の lineedit.slint + common/lineedit-base.slint をアプリ
+// 内に移植したもの (SpinBox と同じ方式)。FluentPalette の依存を外すため、
+// ライト配色の値をローカルに焼いている。クリア ボタン / パスワード表示
+// アイコン (要 SVG) は省略し、input-type: password はマスク表示のみ対応。
+//
+// 標準からの変更点: min-width を 160px から 64px に、min-height を 32px から
+// 20px に縮小し (SpinBox / SmallButton と同じ高さ感)、左右パディングを
+// 12px から 8px に詰めた。内部の TextInput 直API (select-all / cut など) は
+// 上級者向けに TextBoxBase から使える。
+// ライブラリ側 (i-slint-compiler/widgets/*) は変更しない。
+
+import { AppTooltip } from "project-tooltip.slint";
+
+export component TextBoxBase inherits Rectangle {
+	in property <length> font-size <=> text-input.font-size;
+	in property <string> font-family <=> text-input.font-family;
+	in property <bool> font-italic <=> text-input.font-italic;
+	in-out property <string> text <=> text-input.text;
+	in property <bool> enabled <=> text-input.enabled;
+	out property <bool> has-focus: text-input.has-focus;
+	in property <TextHorizontalAlignment> horizontal-alignment <=> text-input.horizontal-alignment;
+	in property <bool> read-only <=> text-input.read-only;
+	in property <InputMethodHints> input-method-hints <=> text-input.input-method-hints;
+	// 空のときに薄く出す仮置きテキスト。
+	in property <string> placeholder-text;
+	in property <brush> placeholder-color;
+	in property <int> font-weight <=> text-input.font-weight;
+	// 文字色 (Rectangle の組み込み color と衝突するため text-color で公開)。
+	in property <brush> text-color;
+	in property <color> selection-background-color <=> text-input.selection-background-color;
+	in property <color> selection-foreground-color <=> text-input.selection-foreground-color;
+	// カーソルが見えなくなるまでの左右の余白 (スクロール計算に使う)。
+	in property <length> margin;
+	in property <InputType> input-type;
+
+	callback accepted(text: string);
+	callback edited(text: string);
+	callback key-pressed(event: KeyEvent) -> EventResult;
+	callback key-released(event: KeyEvent) -> EventResult;
+
+	// 上級者向け: 内部 TextInput の直API。
+	public function set-selection-offsets(anchor: int, focus: int) {
+		text-input.set-selection-offsets(anchor, focus);
+	}
+	public function select-all() { text-input.select-all(); }
+	public function clear-selection() { text-input.clear-selection(); }
+	public function cut() { text-input.cut(); }
+	public function copy() { text-input.copy(); }
+	public function paste() { text-input.paste(); }
+	public function undo() { text-input.undo(); }
+	public function redo() { text-input.redo(); }
+
+	// width < 1px では TextInput がフォーカスできないため min-width 1px。
+	min-width: 1px;
+	min-height: text-input.preferred-height;
+	clip: true;
+	forward-focus: text-input;
+
+	placeholder := Text {
+		width: 100%;
+		height: 100%;
+		vertical-alignment: center;
+		text: (root.text == "" && text-input.preedit-text == "") ? root.placeholder-text : "";
+		font-size: text-input.font-size;
+		font-italic: text-input.font-italic;
+		font-weight: text-input.font-weight;
+		font-family: text-input.font-family;
+		color: root.placeholder-color;
+		horizontal-alignment: root.horizontal-alignment;
+		accessible-role: none;
+	}
+
+	ContextMenuArea {
+		enabled: root.enabled;
+		Menu {
+			if !root.read-only && root.enabled: MenuItem {
+				title: "Undo";
+				activated => { text-input.undo(); }
+			}
+
+			if !root.read-only && root.enabled: MenuItem {
+				title: "Redo";
+				activated => { text-input.redo(); }
+			}
+
+			if !root.read-only && root.enabled: MenuSeparator { }
+
+			MenuItem {
+				title: "Cut";
+				enabled: !root.read-only && root.enabled;
+				activated => { text-input.cut(); }
+			}
+
+			MenuItem {
+				title: "Copy";
+				enabled: !root.text.is-empty;
+				activated => { text-input.copy(); }
+			}
+
+			MenuItem {
+				title: "Paste";
+				enabled: !root.read-only && root.enabled;
+				activated => { text-input.paste(); }
+			}
+
+			MenuItem {
+				title: "Select All";
+				enabled: !root.text.is-empty;
+				activated => { text-input.select-all(); }
+			}
+		}
+
+		text-input := TextInput {
+			property <length> computed-x;
+
+			x: min(0px, max(parent.width - self.width - self.text-cursor-width, self.computed-x));
+			width: max(parent.width - self.text-cursor-width, self.preferred-width);
+			height: 100%;
+			vertical-alignment: center;
+			single-line: true;
+			color: root.text-color;
+			input-type: root.input-type;
+			// アクセシビリティは外側のコンポーネントが面倒を見る。
+			accessible-role: none;
+
+			// カーソル位置が左右の margin の内側に収まるようスクロールする。
+			cursor-position-changed(cursor-position) => {
+				if cursor-position.x + self.computed_x < root.margin {
+					self.computed_x = - cursor-position.x + root.margin;
+				} else if cursor-position.x + self.computed_x > parent.width - root.margin - self.text-cursor-width {
+					self.computed_x = parent.width - cursor-position.x - root.margin - self.text-cursor-width;
+				}
+			}
+
+			accepted => { root.accepted(self.text); }
+			edited => { root.edited(self.text); }
+			key-pressed(event) => { root.key-pressed(event) }
+			key-released(event) => { root.key-released(event) }
+		}
+	}
+}
+
+export component TextBox {
+	in-out property <string> text <=> base.text;
+	in property <string> placeholder-text <=> base.placeholder-text;
+	in property <bool> enabled <=> base.enabled;
+	in property <bool> read-only <=> base.read-only;
+	in property <length> font-size <=> base.font-size;
+	in property <int> font-weight <=> base.font-weight;
+	in property <brush> color <=> base.text-color;
+	in property <color> selection-background-color <=> base.selection-background-color;
+	in property <color> selection-foreground-color <=> base.selection-foreground-color;
+	in property <TextHorizontalAlignment> horizontal-alignment <=> base.horizontal-alignment;
+	in property <InputType> input-type <=> base.input-type;
+	in property <InputMethodHints> input-method-hints <=> base.input-method-hints;
+	// 空のときに薄く出す仮置きテキストの色 (既定 = FluentPalette.text-secondary)。
+	in property <brush> placeholder-color: #00000099;
+	// マウスを重ねると出る説明。空ならツールチップを出さない。
+	in property <string> tooltip-text;
+	out property <bool> has-focus <=> base.has-focus;
+
+	callback accepted <=> base.accepted;
+	callback edited <=> base.edited;
+
+	// 160px -> SpinBox と同じくサイドバー / コントロール行用に縮小。
+	min-width: max(64px, layout.min-width);
+	// 32px -> SpinBox (20px) と同じ高さ感に。
+	min-height: max(20px, layout.min-height);
+	vertical-stretch: 0;
+	horizontal-stretch: 1;
+	forward-focus: base;
+
+	accessible-role: text-input;
+	accessible-enabled: root.enabled;
+	accessible-value <=> text;
+	accessible-placeholder-text: placeholder-text;
+	accessible-read-only: root.read-only;
+	accessible-action-set-value(v) => { base.text = v; base.edited(v); }
+	accessible-action-set-selection-offsets(anchor, focus) => { base.set-selection-offsets(anchor, focus); }
+
+	// 上級者向け: 内部 TextInput の直API を TextBoxBase 経由で使う。
+	public function select-all() { base.select-all(); }
+	public function cut() { base.cut(); }
+	public function copy() { base.copy(); }
+	public function paste() { base.paste(); }
+	public function undo() { base.undo(); }
+	public function redo() { base.redo(); }
+
+	states [
+		disabled when !root.enabled : {
+			background.background: #F9F9F94D;
+			background.border-color: #00000073;
+			base.text-color: #0000005E;
+			base.placeholder-color: #0000005E;
+			base.selection-foreground-color: #FFFFFF;
+		}
+		focused when root.has-focus : {
+			background.background: #FFFFFF;
+			focus-border.background: #005FB8;
+		}
+	]
+
+	background := Rectangle {
+		border-radius: 4px;
+		background: #FFFFFFB3;
+		border-width: 1px;
+		border-color: @linear-gradient(180deg, #0000000F 99.99%, #00000073 100%, #00000073 100%);
+
+		layout := HorizontalLayout {
+			padding-left: 8px;
+			padding-right: 8px;
+
+			base := TextBoxBase {
+				text-color: #000000E6;
+				placeholder-color: root.placeholder-color;
+				selection-background-color: #0078D4;
+				selection-foreground-color: #FFFFFF;
+				margin: layout.padding-left + layout.padding-right;
+				horizontal-stretch: 1;
+			}
+		}
+
+		focus-border := Rectangle {
+			x: parent.border-radius;
+			y: parent.height - self.height;
+			width: parent.width - 2 * parent.border-radius;
+			height: 2px;
+			border-radius: 1px;
+		}
+
+		if root.tooltip-text != "" : Tooltip {
+			AppTooltip {
+				text: root.tooltip-text;
+			}
+		}
+	}
+}
