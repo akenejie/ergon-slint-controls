@@ -30,8 +30,8 @@ use ergon_slint_controls::{AccessKeyHub, MenuAccessKey, MenuOpenHub, SessionEntr
 use ergon_slint_controls::modal_dialog::{ModalMode, OverlayHost as _};
 
 /// このサンプルのモーダル表示方式。全 OS (win/linux/macos) 共に子ウィンドウ
-/// に固定する (オーバーレイに戻したければ InWindowOverlay に、OS に任せるなら
-/// default_for_os() に変える。この 1 箇所だけの変更で切り替わる)。
+/// に固定する (オーバーレイに戻したければ InWindowOverlay に変える。
+/// Windows だけ子ウィンドウにしたければ `if cfg!(windows) { ... }` で分ける)。
 const MODAL_MODE: ModalMode = ModalMode::ChildWindow;
 use slint::{winit_030::{winit, EventResult, WinitWindowAccessor}, ComponentHandle as _, Model as _};
 use std::path::PathBuf;

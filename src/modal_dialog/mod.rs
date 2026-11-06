@@ -42,10 +42,21 @@
 //! const MODAL_MODE: ModalMode = ModalMode::ChildWindow;
 //! ```
 //!
+//! OS で分けたければ、アプリ側で `cfg!` してよい (ライブラリは既定値を
+//! 持たない。方式の選択は完全にアプリ側の判断):
+//!
+//! ```rust
+//! # use ergon_slint_controls::modal_dialog::ModalMode;
+//! // Windows だけ子ウィンドウ、それ以外はオーバーレイにする例
+//! const MODAL_MODE: ModalMode = if cfg!(windows) {
+//! 	ModalMode::ChildWindow
+//! } else {
+//! 	ModalMode::InWindowOverlay
+//! };
+//! ```
+//!
 //! - [`ModalMode::ChildWindow`] = 全 OS で子ウィンドウ
 //! - [`ModalMode::InWindowOverlay`] = 全 OS でウィンドウ内オーバーレイ
-//! - [`ModalMode::default_for_os()`] = OS ごとの既定 (Windows = 子ウィンドウ、
-//!   それ以外 = ウィンドウ内ポップアップ)
 //!
 //! アプリ側の分岐はこの定数に対して行う
 //! (`if MODAL_MODE.is_in_window_overlay() { ... }`)。定数はアプリのクレート内
@@ -123,24 +134,6 @@ pub enum ModalMode {
 }
 
 impl ModalMode {
-	/// OS ごとの既定。
-	///
-	/// - Windows: デスクトップで子ダイアログの管理 (所有ウィンドウ・ダイアログ
-	///   枠) が確実なため子ウィンドウ。
-	/// - それ以外 (Linux / macOS / Android / iOS / 車載・組込み): ウィンドウ
-	///   マネージャの対応が揃っていない、または OS の哲学として多数のウィンドウ
-	///   を出さないため、単一ウィンドウ内のポップアップ。
-	pub const fn default_for_os() -> Self {
-		#[cfg(target_os = "windows")]
-		{
-			Self::ChildWindow
-		}
-		#[cfg(not(target_os = "windows"))]
-		{
-			Self::InWindowOverlay
-		}
-	}
-
 	/// ウィンドウ内オーバーレイ方式か。`const` なので分岐は定数畳み込みされ、
 	/// release ビルドでは選ばれない側の実装が残らない。
 	pub const fn is_in_window_overlay(self) -> bool {
