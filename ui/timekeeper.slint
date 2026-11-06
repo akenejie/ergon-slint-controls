@@ -13,13 +13,13 @@ import {
 	MenuAccessKey, AccessKeyHub, MenuOpenHub, AccessKeyLabel,
 	FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView,
 	MenuHintPopup, MenuDismissLayer,
-	Label, SmallButton, ModeToggleButton, CosmicCheckBox, SpinBox, AppTooltip,
+	Label, SmallButton, ModeToggleButton, CosmicCheckBox, SpinBox, TextBox, AppTooltip,
 } from "@ergon_slint_controls";
 // 「CSV を書き出す」ダイアログは相対 import で同じコンパイル単位に取り込む
 // (export もここから。timekeeper-export.slint 内のライブラリ参照も
 // @ergon_slint_controls で解決される)。
 import { TimeKeeperExport } from "timekeeper-export.slint";
-import { ListView, LineEdit } from "std-widgets.slint";
+import { ListView } from "std-widgets.slint";
 // Tooltip は std-widgets ではなく slint の組み込み要素 (import 不要)。
 
 export { MenuAccessKey, AccessKeyHub, TimeKeeperExport }
@@ -229,7 +229,7 @@ export component TimeKeeperWindow inherits Window {
 			padding: 10px;
 			spacing: 10px;
 
-			name-field := LineEdit {
+			name-field := TextBox {
 				text <=> root.task-name;
 				placeholder-text: "いまの作業";
 				vertical-stretch: 0;
