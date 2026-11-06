@@ -29,10 +29,10 @@ use ergon_slint_controls::menu::{access_key_char, parse_access_key, pressed_char
 use ergon_slint_controls::{AccessKeyHub, MenuAccessKey, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
 use ergon_slint_controls::modal_dialog::{ModalMode, OverlayHost as _};
 
-/// このサンプルのモーダル表示方式。OS ごとの既定に任せる
-/// (Windows = 子ウィンドウ、Linux/macOS = ウィンドウ内オーバーレイ)。
-/// 全 OS で固定したければ ChildWindow / InWindowOverlay を直接書く。
-const MODAL_MODE: ModalMode = ModalMode::default_for_os();
+/// このサンプルのモーダル表示方式。全 OS (win/linux/macos) 共に子ウィンドウ
+/// に固定する (オーバーレイに戻したければ InWindowOverlay に、OS に任せるなら
+/// default_for_os() に変える。この 1 箇所だけの変更で切り替わる)。
+const MODAL_MODE: ModalMode = ModalMode::ChildWindow;
 use slint::{winit_030::{winit, EventResult, WinitWindowAccessor}, ComponentHandle as _, Model as _};
 use std::path::PathBuf;
 use std::rc::Rc;
