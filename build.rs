@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
 fn main() {
+	embed_windows_manifest();
+
 	// ライブラリ本体 (as_library)。アプリの生成コードが @ergon_slint_controls
 	// import を解決するときに使う SLINT_LIBRARY_* メタデータは、これが
 	// cargo::metadata として吐き、依存アプリの build.rs へ DEP_* 環境変数と
@@ -34,4 +36,43 @@ fn main() {
 		slint_build::CompilerConfiguration::new(),
 	)
 	.unwrap();
+}
+
+// Windows (MSVC): 実行ファイルにアプリケーション マニフェストを埋め込む。
+//
+// マニフェストが無いと comctl32.dll が v5.82 に解決され、TaskDialogIndirect
+// などの v6 専用エントリ ポイントが見つからず、ロード時に
+// STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139) で落ちる (dialogs.rs の TaskDialog
+// は静的インポート)。依存アプリは自前でマニフェストを埋め込むことが多い
+// (ikng は embed-manifest クレート) が、本クレートのサンプルは単独で動く
+// 必要があるためここで埋める。
+//
+// embed-manifest クレートが吐く cargo:rustc-link-arg-bins は bin にしか効か
+// ず examples をカバーしないため、cargo:rustc-link-arg を直接吐く。
+fn embed_windows_manifest() {
+	let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+	let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+	if target_os != "windows" || target_env != "msvc" {
+		return;
+	}
+	let out = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR is set"));
+	let manifest = out.join("app-manifest.xml");
+	std::fs::write(
+		&manifest,
+		r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+	<assemblyIdentity name="ergon-slint-controls" type="win32" version="1.0.0.0"/>
+	<dependency>
+		<dependentAssembly>
+			<assemblyIdentity language="*" name="Microsoft.Windows.Common-Controls" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" type="win32" version="6.0.0.0"/>
+		</dependentAssembly>
+	</dependency>
+</assembly>
+"#,
+	)
+	.unwrap();
+	let manifest = manifest.canonicalize().unwrap_or(manifest);
+	println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+	println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+	println!("cargo:rustc-link-arg=/MANIFESTUAC:NO");
 }
