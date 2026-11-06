@@ -138,7 +138,7 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 	// マネージャが「暗黙のモーダル」として扱う。加えて親の入力を ergon の
 	// dialogs で落とす (WM がヒントを無視する環境の保険)。
 	// transient / modal ヒントは winit パッチ フォーク由来の API を使う
-	// (fork は modal-window feature が要求する)。
+	// (fork は modal-dialog feature が要求する)。
 	#[cfg(all(unix, not(target_os = "macos")))]
 	let _parent_xid = parent.with_winit_window(|pw| pw.xlib_window()).flatten();
 	child.with_winit_window(|cw| {
@@ -373,12 +373,12 @@ fn install_event_hook(slot: &ModalSlot) {
 					if let slint::winit_030::winit::keyboard::PhysicalKey::Code(code) =
 						event.physical_key
 					{
-						match crate::modal_window::modal_key_action(code) {
-							Some(crate::modal_window::ModalKeyAction::Cancel) => {
+						match crate::modal_dialog::modal_key_action(code) {
+							Some(crate::modal_dialog::ModalKeyAction::Cancel) => {
 								child.cancel();
 								return EventResult::PreventDefault;
 							}
-							Some(crate::modal_window::ModalKeyAction::Accept) => {
+							Some(crate::modal_dialog::ModalKeyAction::Accept) => {
 								child.accept();
 								return EventResult::PreventDefault;
 							}
