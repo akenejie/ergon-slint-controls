@@ -63,6 +63,17 @@ feature を無効にしたビルドはフォーク不要で、メニュー / ネ
 
 Linux は `libgtk-3-dev` + `pkg-config` が必要 (同一プロセス GTK ダイアログ用)。
 
+Windows では、アプリの実行ファイルに **Common-Controls v6 を要求する
+アプリケーション マニフェストを埋め込むこと** (汎用的な Windows GUI の要件で、
+本ライブラリ固有ではない)。マニフェストが無いと comctl32.dll が v5.82 に
+解決され、ネイティブ ダイアログ (TaskDialog) やカーソル処理が静的に参照する
+v6 専用のエントリ ポイントが見つからず、起動直後に
+STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139) で落ちる。Cargo の仕様上、
+ライブラリの build.rs から依存アプリの実行ファイルへリンカー引数を渡すことは
+できないため、この埋め込みはアプリ側の作業になる (embed-manifest クレートの
+`embed_manifest(new_manifest("..."))` 1 行でよい。本ライブラリのサンプルは
+build.rs が埋め込み済み)。
+
 ### build.rs
 
 ```rust
