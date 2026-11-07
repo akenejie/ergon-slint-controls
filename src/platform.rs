@@ -110,6 +110,27 @@ pub fn setup_window<P: slint::ComponentHandle + 'static>(
 	});
 }
 
+/// カーソル追従ツールチップの 1 軸分の配置を決める (SharedGlobals::new が
+/// TooltipHub.place のハンドラから呼ぶ)。
+///
+/// ポインタ位置を基準に、パネルを右 / 下へ出せるならそこへ出す (ポインタ =
+/// パネルの左上 / 左下角)。はみ出すなら左 / 上へ反転して (ポインタ = 右上 /
+/// 右下角)、左右または上下のどちらに置いてもはみ出す場合だけ例外で、ウィン
+/// ドウ内に収める (クランプ)。隙間は設けない (ポインタが角に密着)。
+pub(crate) fn place_tooltip_axis(cursor: f32, size: f32, limit: f32) -> f32 {
+	if cursor + size <= limit {
+		// 右 / 下へ出して収まる。
+		cursor
+	} else if cursor - size >= 0.0 {
+		// 右 / 下にはみ出すが、左 / 上へ出せば収まる (反転)。
+		cursor - size
+	} else {
+		// どちらに置いてもはみ出す (例外): ウィンドウ内に収める。
+		let hi = (limit - size).max(0.0);
+		cursor.min(hi).max(0.0)
+	}
+}
+
 // The main window HWND, captured once the native window exists. Passing it as
 // the owner to MessageBoxW makes the box application-modal: while it is up the
 // parent window cannot be selected (clicking it just flashes/shakes, the stock
