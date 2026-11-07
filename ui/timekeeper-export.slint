@@ -1,11 +1,11 @@
 // じかん君 (サンプル アプリ) の「CSV を書き出す」ダイアログ。
-// examples/timekeeper.rs が modal_window::open_child_modal で子ウィンドウとして
-// 表示する。OK / キャンセルの callback と値の in-out property だけを用意し、
-// 表示・Esc/Enter の読み替え・中央配置・破棄は modal_window が担う。
+// examples/timekeeper.rs が modal_dialog::open_child_modal で子ウィンドウとし
+// て表示する。OK / キャンセルの callback と値の in-out property だけを用意し、
+// 表示・Esc/Enter の読み替え・中央配置・破棄は modal_dialog が担う。
+// 注: ライブラリの import 文はファイル内で 1 文にまとめる (timekeeper.slint
+// のコメント参照)。
 
-import { SmallButton } from "@ergon_slint_controls";
-import { ModeToggleButton } from "@ergon_slint_controls";
-import { CosmicCheckBox } from "@ergon_slint_controls";
+import { SmallButton, ModeToggleButton, CosmicCheckBox, TooltipPopup } from "@ergon_slint_controls";
 
 export component TimeKeeperExport inherits Window {
 	title: "CSV を書き出す";
@@ -34,11 +34,13 @@ export component TimeKeeperExport inherits Window {
 			Text { text: "区切り:"; vertical-alignment: center; }
 			ModeToggleButton {
 				text: "カンマ";
+				tooltip-text: "カンマで区切ります。";
 				checked: root.comma;
 				clicked => { root.comma = true; }
 			}
 			ModeToggleButton {
 				text: "タブ";
+				tooltip-text: "タブで区切ります。";
 				checked: !root.comma;
 				clicked => { root.comma = false; }
 			}
@@ -71,12 +73,19 @@ export component TimeKeeperExport inherits Window {
 			SmallButton {
 				text: "書き出す";
 				primary: true;
+				tooltip-text: "CSV に書き出します。";
 				clicked => { root.ok(); }
 			}
 			SmallButton {
 				text: "キャンセル";
+				tooltip-text: "ダイアログを閉じます。";
 				clicked => { root.cancel(); }
 			}
 		}
 	}
+
+	// ---- コントロールのツールチップ (カーソル追従) ----
+	// ダイアログのウィンドウにもルートの最後に置く (from_library のグローバ
+	// ルはウィンドウごとの実体なので、メイン ウィンドウのレイヤとは混線しない)。
+	TooltipPopup { }
 }
