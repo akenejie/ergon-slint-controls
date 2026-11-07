@@ -11,7 +11,7 @@
 // ライブラリ側 (i-slint-compiler/widgets/fluent/*) は変更しない。
 
 
-import { AppTooltip } from "project-tooltip.slint";
+import { TooltipSensor } from "tooltip.slint";
 export component SpinBoxBase {
 	in property <int> minimum;
 	in property <int> maximum: 100;
@@ -187,72 +187,74 @@ export component SpinBox {
 		}
 	]
 
-	background := Rectangle {
-		border-radius: 4px;
-		background: #FFFFFFB3;
-		border-width: 1px;
-		border-color: @linear-gradient(180deg, #0000000F 99.99%, #00000073 100%, #00000073 100%);
+	// 全面ホバー センサ (ツールチップ用)。上下ボタン (SpinBoxButton の
+	// TouchArea) の上にカーソルがあっても、祖先 (このセンサ) のフィルタ段は
+	// 先に走るため、スピンボックス全面の hover とカーソル位置が常に取れる。
+	// スクロールは中の SpinBoxBase (i-touch-area) が処理する。
+	i-hover := TooltipSensor {
+		tooltip-text: root.tooltip-text;
 
-		layout := HorizontalLayout {
-			padding-left: 8px;
-			padding-right: 2px;
-			padding-top: 2px;
-			padding-bottom: 2px;
-			spacing: 2px;
+		background := Rectangle {
+			border-radius: 4px;
+			background: #FFFFFFB3;
+			border-width: 1px;
+			border-color: @linear-gradient(180deg, #0000000F 99.99%, #00000073 100%, #00000073 100%);
 
-			Rectangle {
-				clip: true;
-				horizontal-stretch: 1;
+			layout := HorizontalLayout {
+				padding-left: 8px;
+				padding-right: 2px;
+				padding-top: 2px;
+				padding-bottom: 2px;
+				spacing: 2px;
 
-				base := SpinBoxBase {
-					width: 100%;
-					// サイドバー用に文字を 11px にして縦を詰める。
-					font-size: 1rem;
-					color: #000000E6;
-					selection-background-color: #0078D4;
-					selection-foreground-color: #FFFFFF;
-				}
-			}
+				Rectangle {
+					clip: true;
+					horizontal-stretch: 1;
 
-			// 上下ボタン: 右端に縦並び (上=increment / 下=decrement)。
-			// 高さは半分ずつなので、アイコンを少し上下に圧縮して収める。
-			VerticalLayout {
-				spacing: 0px;
-
-				SpinBoxButton {
-					visible: root.enabled && !root.read-only;
-					icon: @image-url("_chevron-up.svg");
-					icon-width: 8px;
-					icon-height: 6px;
-
-					clicked => {
-						base.increment();
+					base := SpinBoxBase {
+						width: 100%;
+						// サイドバー用に文字を 11px にして縦を詰める。
+						font-size: 1rem;
+						color: #000000E6;
+						selection-background-color: #0078D4;
+						selection-foreground-color: #FFFFFF;
 					}
 				}
 
-				SpinBoxButton {
-					visible: root.enabled && !root.read-only;
-					icon: @image-url("_chevron-down.svg");
-					icon-width: 8px;
-					icon-height: 6px;
+				// 上下ボタン: 右端に縦並び (上=increment / 下=decrement)。
+				// 高さは半分ずつなので、アイコンを少し上下に圧縮して収める。
+				VerticalLayout {
+					spacing: 0px;
 
-					clicked => {
-						base.decrement();
+					SpinBoxButton {
+						visible: root.enabled && !root.read-only;
+						icon: @image-url("_chevron-up.svg");
+						icon-width: 8px;
+						icon-height: 6px;
+
+						clicked => {
+							base.increment();
+						}
+					}
+
+					SpinBoxButton {
+						visible: root.enabled && !root.read-only;
+						icon: @image-url("_chevron-down.svg");
+						icon-width: 8px;
+						icon-height: 6px;
+
+						clicked => {
+							base.decrement();
+						}
 					}
 				}
 			}
-		}
 
-		focus-border := Rectangle {
-			x: parent.border-radius;
-			y: parent.height - self.height;
-			width: parent.width - 2 * parent.border-radius;
-			height: 2px;
-		}
-
-		if root.tooltip-text != "" : Tooltip {
-			AppTooltip {
-				text: root.tooltip-text;
+			focus-border := Rectangle {
+				x: parent.border-radius;
+				y: parent.height - self.height;
+				width: parent.width - 2 * parent.border-radius;
+				height: 2px;
 			}
 		}
 	}

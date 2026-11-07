@@ -10,7 +10,7 @@
 // 上級者向けに TextBoxBase から使える。
 // ライブラリ側 (i-slint-compiler/widgets/*) は変更しない。
 
-import { AppTooltip } from "project-tooltip.slint";
+import { TooltipSensor } from "tooltip.slint";
 
 export component TextBoxBase inherits Rectangle {
 	in property <length> font-size <=> text-input.font-size;
@@ -201,37 +201,38 @@ export component TextBox {
 		}
 	]
 
-	background := Rectangle {
-		border-radius: 4px;
-		background: #FFFFFFB3;
-		border-width: 1px;
-		border-color: @linear-gradient(180deg, #0000000F 99.99%, #00000073 100%, #00000073 100%);
+	// 全面ホバー センサ (ツールチップ用)。中の TextInput は左ボタン押下を取
+	// 得するが、祖先 (このセンサ) のフィルタ段は先に走るため、ボックス全面の
+	// hover とカーソル位置が常に取れる。
+	i-hover := TooltipSensor {
+		tooltip-text: root.tooltip-text;
 
-		layout := HorizontalLayout {
-			padding-left: 8px;
-			padding-right: 8px;
+		background := Rectangle {
+			border-radius: 4px;
+			background: #FFFFFFB3;
+			border-width: 1px;
+			border-color: @linear-gradient(180deg, #0000000F 99.99%, #00000073 100%, #00000073 100%);
 
-			base := TextBoxBase {
-				text-color: #000000E6;
-				placeholder-color: root.placeholder-color;
-				selection-background-color: #0078D4;
-				selection-foreground-color: #FFFFFF;
-				margin: layout.padding-left + layout.padding-right;
-				horizontal-stretch: 1;
+			layout := HorizontalLayout {
+				padding-left: 8px;
+				padding-right: 8px;
+
+				base := TextBoxBase {
+					text-color: #000000E6;
+					placeholder-color: root.placeholder-color;
+					selection-background-color: #0078D4;
+					selection-foreground-color: #FFFFFF;
+					margin: layout.padding-left + layout.padding-right;
+					horizontal-stretch: 1;
+				}
 			}
-		}
 
-		focus-border := Rectangle {
-			x: parent.border-radius;
-			y: parent.height - self.height;
-			width: parent.width - 2 * parent.border-radius;
-			height: 2px;
-			border-radius: 1px;
-		}
-
-		if root.tooltip-text != "" : Tooltip {
-			AppTooltip {
-				text: root.tooltip-text;
+			focus-border := Rectangle {
+				x: parent.border-radius;
+				y: parent.height - self.height;
+				width: parent.width - 2 * parent.border-radius;
+				height: 2px;
+				border-radius: 1px;
 			}
 		}
 	}

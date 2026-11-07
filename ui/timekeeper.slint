@@ -12,7 +12,7 @@
 import {
 	MenuAccessKey, AccessKeyHub, MenuOpenHub, AccessKeyLabel,
 	FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView,
-	MenuHintPopup, MenuDismissLayer,
+	MenuHintPopup, MenuDismissLayer, TooltipPopup,
 	Label, SmallButton, ModeToggleButton, CosmicCheckBox, SpinBox, TextBox, AppTooltip,
 } from "@ergon_slint_controls";
 // 「CSV を書き出す」ダイアログは相対 import で同じコンパイル単位に取り込む
@@ -502,4 +502,8 @@ export component TimeKeeperWindow inherits Window {
 
 	// ---- メニュー項目の説明 (左下ポップアップ方式) ----
 	MenuHintPopup { }
+
+	// ---- コントロールのツールチップ (カーソル追従) ----
+	// ルートの最後に置く (最前面の透明レイヤ。クリックは下へ素通しする)。
+	TooltipPopup { }
 }

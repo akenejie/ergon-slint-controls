@@ -62,32 +62,36 @@ use slint::private_unstable_api::re_exports as sp;
 /// ルの実体フィールド)。
 #[allow(non_camel_case_types, non_snake_case)]
 pub struct ergon_slint_controlsSharedGlobals {
-	/// ui/menu-base.slint / ui/menu.slint で export しているグローバルの実体
-	/// (アプリの生成コードが SharedGlobals 構築時に読む。アプリがライブラリを
-	/// 参照すると全エクスポート グローバルが from_library になるため、
-	/// 生成コードが読むフィールドはこの 5 つで固定。グローバルを増やすときは
-	/// ここも更新する)。
+	/// ui/menu-base.slint / ui/menu.slint / ui/tooltip.slint で export している
+	/// グローバルの実体 (アプリの生成コードが SharedGlobals 構築時に読む。
+	/// アプリがライブラリを参照すると全エクスポート グローバルが
+	/// from_library になるため、生成コードが読むフィールドはこの 6 つで固定。
+	/// グローバルを増やすときはここも更新する)。
 	pub global_AccessKeyHub: core::pin::Pin<std::rc::Rc<generated::InnerAccessKeyHub>>,
 	pub global_MenuAccessKey: core::pin::Pin<std::rc::Rc<generated::InnerMenuAccessKey>>,
 	pub global_MenuHintHub: core::pin::Pin<std::rc::Rc<generated::InnerMenuHintHub>>,
 	pub global_MenuOpenHub: core::pin::Pin<std::rc::Rc<generated::InnerMenuOpenHub>>,
 	pub global_MenuBarTheme: core::pin::Pin<std::rc::Rc<generated::InnerMenuBarTheme>>,
+	pub global_TooltipHub: core::pin::Pin<std::rc::Rc<generated::InnerTooltipHub>>,
 	inner: sp::Rc<generated::ergon_slint_controlsSharedGlobals>,
 }
 
 impl ergon_slint_controlsSharedGlobals {
 	/// 生成コードがルート コンポーネントごとに呼ぶ。実体を
-	/// [`menu_bar_theme`] へ登録する。
+	/// [`menu_bar_theme`] へ登録し、[`TooltipHub`](crate::TooltipHub) の
+	/// 配置コールバックを配線する。
 	pub fn new(root_item_tree_weak: sp::VWeak<sp::ItemTreeVTable>) -> sp::Rc<Self> {
 		let inner =
 			generated::ergon_slint_controlsSharedGlobals::new(root_item_tree_weak.clone());
-		menu_bar_theme::register(root_item_tree_weak, inner.global_MenuBarTheme.clone());
+		menu_bar_theme::register(root_item_tree_weak.clone(), inner.global_MenuBarTheme.clone());
+		wire_tooltip_placement(root_item_tree_weak, &inner.global_TooltipHub);
 		sp::Rc::new(Self {
 			global_AccessKeyHub: inner.global_AccessKeyHub.clone(),
 			global_MenuAccessKey: inner.global_MenuAccessKey.clone(),
 			global_MenuHintHub: inner.global_MenuHintHub.clone(),
 			global_MenuOpenHub: inner.global_MenuOpenHub.clone(),
 			global_MenuBarTheme: inner.global_MenuBarTheme.clone(),
+			global_TooltipHub: inner.global_TooltipHub.clone(),
 			inner,
 		})
 	}
@@ -100,4 +104,45 @@ impl ergon_slint_controlsSharedGlobals {
 		self.inner.init_globals();
 		menu_bar_theme::reapply_after_init(&self.global_MenuBarTheme);
 	}
+}
+
+/// [`TooltipHub`](crate::TooltipHub) の配置コールバック (`place`) を配線する。
+///
+/// ルート コンポーネント (ウィンドウ) ごとの実体に対して呼ばれる。ハンドラで
+/// はルートのウィンドウ サイズを実地で読み、[platform の
+/// `place_tooltip_axis`](crate::platform::place_tooltip_axis) で「ポインタを
+/// パネルの四つ角のいずれかに合わせる」位置を求めて panel-x / panel-y へ書
+/// く。表示レイヤ (TooltipPopup) はこれを読むだけ。.slint 側に条件式を書かな
+/// ないのは意図的: 子要素のバインディングの三項演算子 (Condition) があると
+/// コンポーネント ルートの width: 100% の解決が壊れる (slint コンパイラの
+/// default_geometry の挙動。実測)。
+///
+/// ここで配線するのは setup_window (アプリ側、コンポーネント型ジェネリック)
+/// からでは `component.global::<G>()` の Global<P> 実装がジェネリック P に対
+/// して得られないため。from_library の実体はルートごとに生成され、この
+/// SharedGlobals::new 経由で手に入る。
+fn wire_tooltip_placement(
+	root_item_tree_weak: sp::VWeak<sp::ItemTreeVTable>,
+	hub: &core::pin::Pin<sp::Rc<generated::InnerTooltipHub>>,
+) {
+	hub.active.set(true);
+	let tree_weak = root_item_tree_weak.clone();
+	let hub_for_handler = hub.clone();
+	hub.place.set_handler(move |(cursor_x, cursor_y, w, h): &(sp::Coord, sp::Coord, sp::Coord, sp::Coord)| {
+		let Some(tree) = tree_weak.upgrade() else { return };
+		let mut adapter = None;
+		sp::VRc::borrow_pin(&tree).as_ref().window_adapter(false, &mut adapter);
+		let Some(adapter) = adapter else { return };
+		let window = adapter.window();
+		let scale = window.scale_factor();
+		let size = window.size();
+		let win_w = size.width as f32 / scale;
+		let win_h = size.height as f32 / scale;
+		hub_for_handler.panel_x.set(sp::LogicalLength::new(crate::platform::place_tooltip_axis(
+			*cursor_x, *w, win_w,
+		)));
+		hub_for_handler.panel_y.set(sp::LogicalLength::new(crate::platform::place_tooltip_axis(
+			*cursor_y, *h, win_h,
+		)));
+	});
 }

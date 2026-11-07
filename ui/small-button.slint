@@ -10,8 +10,8 @@
 // こちらを使う。
 // ライブラリ側(i-slint-compiler/widgets/fluent/button.slint)は変更しない。
 
-import { AppTooltip } from "project-tooltip.slint";
 import { AccessKeyLabel } from "menu-base.slint";
+import { TooltipSensor } from "tooltip.slint";
 
 export component SmallButton inherits Rectangle {
 	in property <string> text;
@@ -60,49 +60,57 @@ export component SmallButton inherits Rectangle {
 		}
 	]
 
-	i-background := Rectangle {
-		border-radius: 4px;
-		background: root.primary ? #005FB8 : #FFFFFFB3;
+	// 全面ホバー センサ (ツールチップ用)。ボタンの中身を包む: 子の
+	// i-touch-area が移動イベントを取っても、祖先 (このセンサ) のフィルタ段
+	// は先に走るため、ボタン全面の hover とカーソル位置が常に取れる。押下や
+	// クリックは子の i-touch-area が処理する (センサはクリックを持たない)。
+	i-hover := TooltipSensor {
+		tooltip-text: root.tooltip-text;
 
-		animate background, border-color { duration: 150ms; }
+		i-background := Rectangle {
+			border-radius: 4px;
+			background: root.primary ? #005FB8 : #FFFFFFB3;
 
-		i-border := Rectangle {
-			border-radius: parent.border-radius;
-			border-width: 1px;
-			border-color: root.primary ? @linear-gradient(180deg, #FFFFFF14 90.67%, #00000066 100%) : @linear-gradient(180deg, #0000000F 90.58%, #00000029 100%);
-		}
+			animate background, border-color { duration: 150ms; }
 
-		i-layout := HorizontalLayout {
-			padding-left: 12px;
-			padding-right: 12px;
-			padding-top: 1.5px;
-			padding-bottom: 2.5px;
-			spacing: 4px;
-			alignment: center;
-
-			if (root.icon.width > 0 && root.icon.height > 0) : Image {
-				y: (parent.height - self.height) / 2;
-				source <=> root.icon;
-				width: root.icon-size;
-				min-height: root.icon-size;
-				colorize: root.colorize-icon ? root.text-color : transparent;
+			i-border := Rectangle {
+				border-radius: parent.border-radius;
+				border-width: 1px;
+				border-color: root.primary ? @linear-gradient(180deg, #FFFFFF14 90.67%, #00000066 100%) : @linear-gradient(180deg, #0000000F 90.58%, #00000029 100%);
 			}
 
-			i-label := AccessKeyLabel {
-				text: root.text;
-				underline: root.access-key-underline;
-				font-size: 1.0909rem;
-				font-weight: FontWeight.normal;
-				horizontal-alignment: center;
-				color: root.text-color;
-				accessible-role: none;
+			i-layout := HorizontalLayout {
+				padding-left: 12px;
+				padding-right: 12px;
+				padding-top: 1.5px;
+				padding-bottom: 2.5px;
+				spacing: 4px;
+				alignment: center;
+
+				if (root.icon.width > 0 && root.icon.height > 0) : Image {
+					y: (parent.height - self.height) / 2;
+					source <=> root.icon;
+					width: root.icon-size;
+					min-height: root.icon-size;
+					colorize: root.colorize-icon ? root.text-color : transparent;
+				}
+
+				i-label := AccessKeyLabel {
+					text: root.text;
+					underline: root.access-key-underline;
+					font-size: 1.0909rem;
+					font-weight: FontWeight.normal;
+					horizontal-alignment: center;
+					color: root.text-color;
+					accessible-role: none;
+				}
 			}
 		}
-	}
 
-	i-touch-area := TouchArea {
-		clicked => {
-			root.clicked();
+		i-touch-area := TouchArea {
+			clicked => {
+				root.clicked();
+			}
 		}
 	}
 
@@ -138,10 +146,5 @@ export component SmallButton inherits Rectangle {
 		}
 	}
 
-	// マウスを重ねると、ポインタの近くに説明を表示する (空なら出さない)。
-	if root.tooltip-text != "" : Tooltip {
-		AppTooltip {
-			text: root.tooltip-text;
-		}
-	}
+	// 表示は TooltipPopup (ウィンドウ ルートに置くレイヤ) が担う。
 }

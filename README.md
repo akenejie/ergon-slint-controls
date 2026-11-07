@@ -10,7 +10,7 @@ Windows 風の `&` アクセスキー」を 1 つのライブラリで揃える�
 
 | 柱 | 内容 | 参照方法 |
 |---|---|---|
-| Slint 部品 | メニューバー / 小ボタン / トグルボタン / チェックボックス / スピンボックス / テキストボックス / 複数行テキストボックス / スクロールビュー / ラベル / ツールチップ | `.slint` 内で `import { ... } from "@ergon_slint_controls"` |
+| Slint 部品 | メニューバー / 小ボタン / トグルボタン / チェックボックス / スピンボックス / テキストボックス / 複数行テキストボックス / スクロールビュー / ラベル / ツールチップレイヤ | `.slint` 内で `import { ... } from "@ergon_slint_controls"` |
 | Rust ユーティリティ | `menu` (`&` 記法パース) / `dialogs` (ネイティブ ダイアログ) / `platform` (タイトルバー・アイコン・修飾キー) / `cursor` (カーソル制御) / `gtk` (Linux) | `use ergon_slint_controls::...` |
 | `modal_dialog` | モーダル ダイアログ制御 (feature `modal-dialog` / 既定オフ) | `use ergon_slint_controls::modal_dialog::...` |
 
@@ -212,6 +212,7 @@ default-font-family: root.ui-font-family;
 | `CosmicCheckBox` | `checked` / `checked-color` | (なし) | 見た目だけのチェックボックス。クリック処理は自前実装 |
 | `SpinBox` | `value` (in-out) / `minimum` / `maximum` / `step-size` / `read-only` / `enabled` / `tooltip-text` / `horizontal-alignment` / `has-focus` | `edited(int)` | 上下ボタン縦並び。数値の直接入力も可 |
 | `TextBox` | `text` (in-out) / `placeholder-text` / `placeholder-color` / `read-only` / `enabled` / `font-size` / `font-weight` / `color` / `selection-background-color` / `selection-foreground-color` / `horizontal-alignment` / `input-type` / `input-method-hints` / `tooltip-text` / `has-focus` | `accepted(string)` / `edited(string)` | 1 行テキスト入力。右クリックで Undo / Redo / Cut / Copy / Paste / Select All のコンテキスト メニュー |
+| `TooltipPopup` | (配置するだけ) | (なし) | コントロールの `tooltip-text` を出すカーソル追従レイヤ。ウィンドウ ルートの最後に置く (「コントロールのツールチップ」参照) |
 | `MultiLineTextBox` | `text` (in-out) / `placeholder-text` / `placeholder-color` / `wrap` / `read-only` / `enabled` / `font-size` / `font-weight` / `color` / `selection-background-color` / `selection-foreground-color` / `horizontal-alignment` / `input-method-hints` / `has-focus` / `content-x` / `content-y` / `content-width` / `content-height` | `edited(string)` / `key-pressed` / `key-released` | 複数行テキスト入力 (スクロール付き)。コンテキスト メニューと `select-all()` 等の直API は `TextBox` と共通 |
 | `ScrollView` | `content-x` / `content-y` / `content-width` / `content-height` (in-out) / `visible-width` / `visible-height` / `vertical-scrollbar-policy` / `horizontal-scrollbar-policy` / `mouse-drag-pan-enabled` | `scrolled()` | スクロールビュー (ScrollBar 付き Flickable)。部品の内部で使うほか単体でも可 |
 | `SpinBoxBase` / `SpinBoxButton` | フォント / 選択色 / `icon-width` / `icon-height` | `update-value()` / `increment()` / `decrement()` / `clicked()` | 上級者向けの内部部品 |
@@ -261,6 +262,33 @@ Text { text: MenuHintHub.text != "" ? MenuHintHub.text : root.own-hint; }
 
 優先順位は「開いているドロップダウンの項目の説明 > バー項目の説明」
 (メニューを開いている間は項目の説明、閉じている間はボタンの説明が出る)。
+
+### コントロールのツールチップ (カーソル追従)
+
+`SmallButton` / `ModeToggleButton` / `SpinBox` / `TextBox` の `tooltip-text`
+は、マウスを重ねて 500ms 後にポインタの近くへ出る。配置は標準 (右下に出し、
+はみ出した分だけずらして収める) ではなく**ポインタを基準に四つ角のいずれか
+を合わせる**: 右 / 下にはみ出すなら左 / 上へ出して (ポインタ = 反対側の角)、
+左右または上下のどちらに置いてもはみ出す場合だけ例外でウィンドウ内に収める。
+隙間はなくポインタが角に密着する。
+
+表示は `TooltipPopup` (アプリのウィンドウ ルートの最後に置く透明レイヤ) が
+担う。**ウィンドウの .slint に 1 行追加が必須** (MenuHintPopup と同じ要領。
+置かないと tooltip-text を設定しても出ない):
+
+```slint
+import { ..., TooltipPopup } from "@ergon_slint_controls";
+
+export component MainWindow inherits Window {
+    ...
+    MenuHintPopup { }
+    TooltipPopup { }   // 最後 (最前面の透明レイヤ。クリックは下へ素通し)
+}
+```
+
+配置の計算はライブラリの Rust 側 (SharedGlobals 経由でウィンドウごとに配線)
+が行う。from_library のグローバルはウィンドウごとの実体なので、複数ウィンド
+ウ (設定ダイアログ等) でも混線しない。アプリ側に必要なコードは上の 1 行だけ。
 
 ### メニューの開閉と外側クリック / 非活性で閉じる
 
