@@ -340,36 +340,44 @@ fn install_event_hook(slot: &ModalSlot) {
 		let Some(slot) = weak.upgrade() else { return EventResult::Propagate };
 		let child = slot.borrow().as_ref().map(|s| s.child.clone());
 		let Some(child) = child else { return EventResult::Propagate };
-		// (X11/macOS) slint バックエンドは生成直後にホストのカラースキームを新
-		// 規ウィンドウへ流し込み (winitwindowadapter の create_window)、さらに
-		// XDG 設定のポータル監視が全ウィンドウへ push する。生成時に焼き込ん
-		// だテーマやサイズ固定が上書きされることがあり、タイトルバーが黒くな
-		// ったりリサイズできたりする (実測)。イベントごとに冪等に再主張して勝
-		// たせる。正しければ何もしない (X プロパティの同値書き込みはイベント
-		// を発生させないため、ちらつき / 負荷はない)。テーマ指定はプロパティ
-		// 書き換えのみでウィンドウ移動のような可視ちらつきはなく、落ち着いた
-		// 後は OS 標準機構に任せる。
-		#[cfg(not(windows))]
-		{
-			let cw = child.window();
-			cw.with_winit_window(|w| {
-				// 生成属性 (非リサイズ) が反映されなかった場合の再主張。
-				// winit の is_resizable() はキャッシュしたヒントを読むだけ。
-				if w.is_resizable() {
-					w.set_resizable(false);
-				}
-				// テーマ: 生成時に焼き込んだ値 (親に揃える) を再主張する。
-				if let Some(theme) = backend::peek_next_child_theme() {
-					w.set_theme(Some(theme));
-				}
-			});
-		}
-		// (Windows) WS_EX_DLGMODALFRAME は winit パッチが生成時から維持する。
-		// 残る所望スタイル (閉じるボタンのみ・非リサイズ) は winit が
-		// set_window_flags のたびに再計算するため、イベントごとに冪等に
-		// 整え直して維持する。
-		#[cfg(windows)]
-		enforce_modal_styles(child.window());
+	// (X11/macOS) slint バックエンドは生成直後にホストのカラースキームを新
+	// 規ウィンドウへ流し込み (winitwindowadapter の create_window)、さらに
+	// XDG 設定のポータル監視が全ウィンドウへ push する。生成時に焼き込んだ
+	// テーマやサイズ固定が上書きされることがあり、タイトルバーが黒くなった
+	// りリサイズできたりする (実測)。
+	//
+	// 再主張は**マップ前 (is_visible == false) に限定**する。マップ後の修正
+	// は WM の再装飾 = 表示位置のガタつきになるため (実測)、見えないうちに
+	// 済ませる。マップ後は正しい状態で表示されている前提とし、触らない。
+	// 正しい状態での再主張は何もしない (X の同値プロパティ書き込みはイベント
+	// を発生させないため、負荷もない)。テーマ指定はプロパティ書き換えのみで
+	// ウィンドウ移動のような可視ちらつきはなく、落ち着いた後は OS 標準機構に
+	// 任せる。
+	#[cfg(not(windows))]
+	{
+		let cw = child.window();
+		cw.with_winit_window(|w| {
+			// None (未確定) は未マップ扱いにする。
+			if w.is_visible() != Some(false) {
+				return;
+			}
+			// 生成属性 (非リサイズ) が反映されなかった場合の再主張。
+			// winit の is_resizable() はキャッシュしたヒントを読むだけ。
+			if w.is_resizable() {
+				w.set_resizable(false);
+			}
+			// テーマ: 生成時に焼き込んだ値 (親に揃える) を再主張する。
+			if let Some(theme) = backend::peek_next_child_theme() {
+				w.set_theme(Some(theme));
+			}
+		});
+	}
+	// (Windows) WS_EX_DLGMODALFRAME は winit パッチが生成時から維持する。
+	// 残る所望スタイル (閉じるボタンのみ・非リサイズ) は winit が
+	// set_window_flags のたびに再計算するため、イベントごとに冪等に
+	// 整え直して維持する。
+	#[cfg(windows)]
+	enforce_modal_styles(child.window());
 		match event {
 			WindowEvent::CloseRequested => {
 				child.cancel();
@@ -442,6 +450,25 @@ fn apply_modal_when_ready<P: ComponentHandle + 'static>(
 			});
 		}
 		return;
+	}
+	// マップ直前の属性検証: slint バックエンドのカラースキーム push や WM 側
+	// の属性適用が、生成時に焼き込んだテーマ / サイズ固定を上書きすることが
+	// ある (実測)。マップ後の修正は WM の再装飾 = 表示位置のガタつきになる
+	// ため、**見えないうちに**ここで検証して修正する。
+	#[cfg(not(windows))]
+	{
+		use slint::winit_030::WinitWindowAccessor;
+		let guard = slot.borrow();
+		if let Some(session) = guard.as_ref() {
+			session.child.window().with_winit_window(|w| {
+				if w.is_resizable() {
+					w.set_resizable(false);
+				}
+				if let Some(theme) = backend::peek_next_child_theme() {
+					w.set_theme(Some(theme));
+				}
+			});
+		}
 	}
 	let Some(parent) = parent_weak.upgrade() else { return };
 	{
