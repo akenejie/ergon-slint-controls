@@ -151,12 +151,7 @@ fn wire_tooltip_placement(
 	let debug_log = tooltip_debug_enabled();
 	hub.place.set_handler(move |(cursor_x, cursor_y, w, h): &(sp::Coord, sp::Coord, sp::Coord, sp::Coord)| {
 		let fallback = || {
-			generated::PanelPlacement {
-				px: *cursor_x,
-				py: *cursor_y,
-				ww: 0.0,
-				wh: 0.0,
-			}
+			generated::PanelPlacement { px: *cursor_x, py: *cursor_y }
 		};
 		let Some(tree) = tree_weak.upgrade() else { return fallback() };
 		let mut adapter = None;
@@ -172,11 +167,6 @@ fn wire_tooltip_placement(
 		if debug_log {
 			eprintln!("[tooltip] 配置: cursor=({cursor_x},{cursor_y}) panel-size=({w},{h}) win=({win_w},{win_h}) -> panel=({px},{py})");
 		}
-		generated::PanelPlacement {
-			px,
-			py,
-			ww: win_w,
-			wh: win_h,
-		}
+		generated::PanelPlacement { px, py }
 	});
 }
