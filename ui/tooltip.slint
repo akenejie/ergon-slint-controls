@@ -122,6 +122,14 @@ export component TooltipSensor inherits TouchArea {
 // パネルの座標はウィンドウ座標そのまま (レイヤはウィンドウの (0,0) に置かれ
 // るため)。表示位置は「表示開始時のカーソル位置」で確定し、以後カーソルに追
 // 従しない。
+//
+// パネルの表示ゲート: テキストのフォント計測は数フレームかけて段階的に確定
+// する (実測: 0 -> 19 -> 147 など)。確定中のパネルを表示すると「出現 -> サ
+// イズ変化 -> 反転再計算 -> 位置が動く」ちらつきになる。そこで幅の安定を検
+// 出してから表示する: 表示ゲートは「現在の幅 == 1 フレーム前の幅」(安定フ
+// ラグ)。幅は表示タイマー (フレーム毎) で 1 フレーム遅延して追跡するため、
+// 幅が 1 フレーム以上変化しなければゲートが開く。ハードコードした待ち時間
+// は不要。
 export component TooltipPopup inherits Rectangle {
 	x: 0;
 	y: 0;
@@ -129,16 +137,19 @@ export component TooltipPopup inherits Rectangle {
 	height: TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, 0px, 0px).wh;
 	visible: TooltipHub.active && TooltipHub.text != "";
 
-	// パネルの表示ゲート。テキストのフォント計測は数フレームかけて段階的に
-	// 確定する (実測: 0 -> 19 -> 147 など)。確定中のパネルを表示すると「出現
-	// -> サイズ変化 -> 反転再計算 -> 位置が動く」ちらつきになるため、テキス
-	// トが変わるたびに 1 フレーム (50ms) 待ってから表示する。
-	private property <bool> panel-shown: false;
+	// 幅の安定検出: prev-w = 前ティックの幅、stable-w = 安定したとみなす幅。
+	// 表示ゲートは「現在の幅 == stable-w」。
+	private property <length> prev-w: 0px;
+	private property <length> stable-w: 0px;
 
 	Timer {
-		interval: 50ms;
-		running: TooltipHub.text != "" && !root.panel-shown;
-		triggered => { root.panel-shown = true; }
+		// フレーム毎に幅を 1 フレーム遅延で追跡する。
+		interval: 16ms;
+		running: TooltipHub.text != "";
+		triggered => {
+			root.stable-w = root.prev-w;
+			root.prev-w = i-panel.width;
+		}
 	}
 
 	i-panel := Rectangle {
@@ -146,7 +157,7 @@ export component TooltipPopup inherits Rectangle {
 		y: TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, self.width, self.height).py;
 		width: i-text.preferred-width + 16px;
 		height: i-text.preferred-height + 4px;
-		visible: root.panel-shown && self.width > 0px;
+		visible: self.width > 0px && self.width == root.stable-w;
 		background: #ffffff;
 		border-radius: 3px;
 		border-width: 0.5px;
@@ -163,9 +174,6 @@ export component TooltipPopup inherits Rectangle {
 			text: TooltipHub.text;
 			color: #202020;
 			font-size: 1rem;
-			// テキストが変わるたびに表示ゲートをリセットする (別のコントロー
-			// ルのツールチップへ切り替わる際も、サイズ確定後に表示させる)。
-			changed text => { root.panel-shown = false; }
 		}
 	}
 }
