@@ -107,36 +107,23 @@ export component TooltipSensor inherits TouchArea {
 		}
 	}
 
-	// 表示中はカーソルに追従する。
-	changed mouse-x => {
-		if (root.shown) {
-			TooltipHub.cursor-x = root.cursor-x;
-			TooltipHub.cursor-y = root.cursor-y;
-			TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, TooltipHub.panel-w, TooltipHub.panel-h);
-		}
-	}
-	changed mouse-y => {
-		if (root.shown) {
-			TooltipHub.cursor-x = root.cursor-x;
-			TooltipHub.cursor-y = root.cursor-y;
-			TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, TooltipHub.panel-w, TooltipHub.panel-h);
-		}
-	}
-
 	@children
 }
 
 // ツールチップの表示レイヤ。**ウィンドウのルートの最後に置く** (MenuHintPopup
 // と同じ)。TouchArea を持たない透明レイヤなので、表示中もクリックは下の
-// コントロールへ素通しする。ルートに size を持たせない (百分率も使わない)。
+// コントロールへ素通しする。ルートのサイズは百分率にせず、Rust が流し込む
+// ウィンドウ サイズ (win-width / win-height) に束縛する (実測: 百分率を条件
+// 式つきの子バインディングと組み合わせるとルートの解決が壊れるため)。
 // パネルの座標はウィンドウ座標そのまま (レイヤはウィンドウの (0,0) に置かれ
-// るため)。
+// るため)。表示位置は「表示開始時のカーソル位置」で確定し、以後は追従しない
+// (サイズが確定した時点での再配置のみ。位置の再計算はカーソル追従を意味し
+// ない)。
 export component TooltipPopup inherits Rectangle {
 	x: 0;
 	y: 0;
 	width: TooltipHub.win-width;
 	height: TooltipHub.win-height;
-	background: #400000ff;
 	visible: TooltipHub.active && TooltipHub.text != "";
 
 	i-panel := Rectangle {
