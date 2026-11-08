@@ -99,10 +99,6 @@ fn set_transient_for(conn: &x11rb::rust_connection::RustConnection, dialog: u32,
 
 /// X ウィンドウをフォーカスされるまで活性化し続ける (`_NET_ACTIVE_WINDOW`)。
 ///
-/// 【廃止】モーダル ダイアログの表示後の「あれこれ処理」= ちらつきの原因に
-/// なったため廃止し、単発の [`activate_window`] 1 回に置き換えた。過去の実
-/// 機調査の知見は以下のとおり (再調査の際はここから):
-///
 /// 実験で確定した Mutter (Ubuntu) の挙動:
 ///
 /// - WM は窓の管理開始時 (マップ処理) に transient / modal / user time を一
@@ -191,20 +187,21 @@ pub fn activate_window_until_focused(win: u32) {
 // タイムスタンプは実時刻ではなく 0 (時刻指定なし) にするのが確実 — 実時刻だ
 // と Mutter の display->last_user_time との比較で拒否されることがある
 // (activate_window_until_focused のドキュメント参照)。
-pub fn activate_window(win: u32) {
-	use x11rb::connection::Connection as _;
-	use x11rb::protocol::xproto::ClientMessageEvent;
-	use x11rb::protocol::xproto::ConnectionExt as _;
-	use x11rb::protocol::xproto::EventMask;
-	let Ok((conn, _)) = x11rb::connect(None) else { return };
-	let Some(state) = intern(&conn, b"_NET_ACTIVE_WINDOW") else { return };
-	let root = conn.setup().roots[0].root;
-	let event = ClientMessageEvent::new(32, win, state, [1u32, 0, 0, 0, 0]).to_owned();
-	let _ = conn
-		.send_event(false, root, EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY, event)
-		.map(|c| c.ignore_error());
-	let _ = conn.flush();
-}
+//
+// pub fn activate_window(win: u32, time: u32) {
+// 	use x11rb::connection::Connection as _;
+// 	use x11rb::protocol::xproto::ClientMessageEvent;
+// 	use x11rb::protocol::xproto::ConnectionExt as _;
+// 	use x11rb::protocol::xproto::EventMask;
+// 	let Ok((conn, _)) = x11rb::connect(None) else { return };
+// 	let Some(state) = intern(&conn, b"_NET_ACTIVE_WINDOW") else { return };
+// 	let root = conn.setup().roots[0].root;
+// 	let event = ClientMessageEvent::new(32, win, state, [1u32, time, 0, 0, 0]).to_owned();
+// 	let _ = conn
+// 		.send_event(false, root, EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY, event)
+// 		.map(|c| c.ignore_error());
+// 	let _ = conn.flush();
+// }
 
 /// X ウィンドウへ `_NET_WM_USER_TIME` を書く。
 ///
