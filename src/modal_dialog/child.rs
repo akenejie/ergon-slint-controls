@@ -184,18 +184,18 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		// PropertyNotify トリックで行う (X プロトコルには現在時刻を問い合わせ
 		// る API が無い)。親窓の時刻は winit フォーク (modal.5) が入力イベン
 		// トのたびに自動更新するため、ここでは触らない。
+		//
+		// 書き込みは**マップ前** (この位置は set_visible(true) の前) 行う:
+		// WM は管理開始時 (最初のマップ処理) に user time を読む。マップ後の
+		// 書き込みはフォーカスの再決定を引き起こし、表示位置のちらつきになる
+		// (実測)。マップ前でもプロパティ操作は可能。
 		#[cfg(target_os = "linux")]
 		{
 			if let Some(child) = cw.xlib_window() {
 				let child = child as u32;
-				let t = crate::gtk::current_server_time(child);
-				if let Some(t) = t {
+				if let Some(t) = crate::gtk::current_server_time(child) {
 					crate::gtk::write_user_time(child, t);
 				}
-				// フォーカスされるまで活性化を続ける (Mutter は管理時に自分で
-				// フォーカスを与えないため、マップ後の活性化要求が 1 回必要。
-				// 詳細は gtk::activate_window_until_focused のドキュメント)。
-				crate::gtk::activate_window_until_focused(child);
 			}
 		}
 		// 非表示で生成した子ダイアログをここでマップする。
@@ -204,6 +204,15 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		// 再調査は src/gtk.rs の debug_trace_map_state を復活させる。
 		// #[cfg(target_os = "linux")]
 		// crate::gtk::debug_trace_map_state(cw.xlib_window().map(|x| x as u32));
+
+		// マップ後の処理は活性化要求 1 回だけ (Mutter は管理時に自分でフォーカ
+		// スを与えないため必要。実運用では 1 回で済む — v0.3.x の実機調査)。
+		// ポーリング ループ (activate_window_until_focused) は表示後の「あれ
+		// これ処理」= ちらつきになるため廃止し、1 回の要求に抑えた。
+		#[cfg(target_os = "linux")]
+		if let Some(child) = cw.xlib_window() {
+			crate::gtk::activate_window(child as u32);
+		}
 	}
 	});
 	crate::dialogs::dialog_push();
