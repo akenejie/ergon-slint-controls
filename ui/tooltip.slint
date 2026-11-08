@@ -134,6 +134,11 @@ export component TooltipPopup inherits Rectangle {
 		y: TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, self.width, self.height).py;
 		width: i-text.preferred-width + 16px;
 		height: i-text.preferred-height + 4px;
+		// サイズが確定するまで非表示: テキストのフォント計測は 2 段階で確定
+		// する (初回 0 -> 次フレームで確定)。確定前のフレームでパネルを出す
+		// と「出現 -> 反転再計算 -> 位置が動く」ちらつきになるため、確定後の
+		// 位置に最初から表示する。
+		visible: self.width > 0px && self.height > 0px;
 		background: #ffffff;
 		border-radius: 3px;
 		border-width: 0.5px;
