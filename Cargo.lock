@@ -6007,7 +6007,7 @@ checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 [[package]]
 name = "winit"
 version = "0.30.13"
-source = "git+https://github.com/akenejie/slint-modal-winit?tag=v0.30.13-modal.11#69987289f17600442804e29bbc9dcac1ee74fbc3"
+source = "git+https://github.com/akenejie/slint-modal-winit?tag=v0.30.13-modal.12#43ed2cca772ef9563ef518c0b64a815ce2ec1d09"
 dependencies = [
  "ahash",
  "android-activity",
