@@ -290,6 +290,13 @@ export component MainWindow inherits Window {
 が行う。from_library のグローバルはウィンドウごとの実体なので、複数ウィンド
 ウ (設定ダイアログ等) でも混線しない。アプリ側に必要なコードは上の 1 行だけ。
 
+切り分け用に、環境変数 `SLINT_TOOLTIP_DEBUG=1` を付けるとセンサ / 配置のロ
+グが stderr へ出る:
+
+```sh
+SLINT_TOOLTIP_DEBUG=1 cargo run --example timekeeper --features modal-dialog
+```
+
 ### メニューの開閉と外側クリック / 非活性で閉じる
 
 メニューの開閉状態は `MenuOpenHub` グローバルが唯一の情報源。バー項目と

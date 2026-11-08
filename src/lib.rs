@@ -100,8 +100,15 @@ impl ergon_slint_controlsSharedGlobals {
 	/// MenuBarTheme に既定色を書き込んだ**後**で、取得済みのテーマ色を再適用
 	/// する (後から生成されたルート向け。最初のルートはまだ色が無いので
 	/// 既定値のまま、setup_window で流し込まれる)。
+	///
+	/// ここで [`TooltipHub`](crate::TooltipHub) を有効化するのも同じ理由:
+	/// 内部の init が全グローバルに宣言既定値を書き込むため、`new()` の時点
+	/// で active を true にしておいても init の `active = false` で上書きさ
+	/// れる (実測。このバグが「ツールチップが一切出ない」の原因だった)。
 	pub fn init_globals(self: &sp::Rc<Self>) {
 		self.inner.init_globals();
+		self.global_TooltipHub.active.set(true);
+		self.global_TooltipHub.debug_log.set(tooltip_debug_enabled());
 		menu_bar_theme::reapply_after_init(&self.global_MenuBarTheme);
 	}
 }
@@ -121,18 +128,37 @@ impl ergon_slint_controlsSharedGlobals {
 /// からでは `component.global::<G>()` の Global<P> 実装がジェネリック P に対
 /// して得られないため。from_library の実体はルートごとに生成され、この
 /// SharedGlobals::new 経由で手に入る。
+/// 切り分け用ログの有効フラグ (SLINT_TOOLTIP_DEBUG=1)。
+fn tooltip_debug_enabled() -> bool {
+	std::env::var("SLINT_TOOLTIP_DEBUG").ok().as_deref() == Some("1")
+}
+
 fn wire_tooltip_placement(
 	root_item_tree_weak: sp::VWeak<sp::ItemTreeVTable>,
 	hub: &core::pin::Pin<sp::Rc<generated::InnerTooltipHub>>,
 ) {
-	hub.active.set(true);
+	// active の有効化は init_globals で行う (ここで設定しても内部 init の
+	// 既定値書き込みで上書きされるため)。
+	// 切り分け用: SLINT_TOOLTIP_DEBUG=1 でセンサ / 配置のログを stderr へ
+	// (debug-log も内部 init で上書きされるため、init_globals で改めて設定)。
+	let debug_log = tooltip_debug_enabled();
+	hub.debug_log.set(debug_log);
 	let tree_weak = root_item_tree_weak.clone();
 	let hub_for_handler = hub.clone();
 	hub.place.set_handler(move |(cursor_x, cursor_y, w, h): &(sp::Coord, sp::Coord, sp::Coord, sp::Coord)| {
-		let Some(tree) = tree_weak.upgrade() else { return };
+		if debug_log {
+			eprintln!("[tooltip] place: cursor=({cursor_x},{cursor_y}) panel-size=({w},{h})");
+		}
+		let Some(tree) = tree_weak.upgrade() else {
+			if debug_log { eprintln!("[tooltip] ルート木の upgrade 失敗"); }
+			return;
+		};
 		let mut adapter = None;
 		sp::VRc::borrow_pin(&tree).as_ref().window_adapter(false, &mut adapter);
-		let Some(adapter) = adapter else { return };
+		let Some(adapter) = adapter else {
+			if debug_log { eprintln!("[tooltip] window_adapter なし"); }
+			return;
+		};
 		let window = adapter.window();
 		let scale = window.scale_factor();
 		let size = window.size();
@@ -140,6 +166,9 @@ fn wire_tooltip_placement(
 		let win_h = size.height as f32 / scale;
 		let px = crate::platform::place_tooltip_axis(*cursor_x, *w, win_w);
 		let py = crate::platform::place_tooltip_axis(*cursor_y, *h, win_h);
+		if debug_log {
+			eprintln!("[tooltip] 配置: win=({win_w},{win_h}) -> panel=({px},{py})");
+		}
 		hub_for_handler.win_width.set(sp::LogicalLength::new(win_w));
 		hub_for_handler.win_height.set(sp::LogicalLength::new(win_h));
 		hub_for_handler.panel_x.set(sp::LogicalLength::new(px));

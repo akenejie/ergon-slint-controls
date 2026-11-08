@@ -50,6 +50,8 @@ export global TooltipHub {
 	in-out property <length> win-height: 0px;
 	// place が配線済みか (未配線なら表示しない)。
 	in-out property <bool> active: false;
+	// 切り分け用ログ (SLINT_TOOLTIP_DEBUG=1 で Rust 側から有効化)。
+	in-out property <bool> debug-log: false;
 
 	// 配置を依頼する (センサから。Rust 側で計算して panel-x / panel-y へ書く)。
 	callback place(cursor-x: length, cursor-y: length, panel-w: length, panel-h: length);
@@ -80,6 +82,9 @@ export component TooltipSensor inherits TouchArea {
 		interval: 500ms;
 		running: root.has-hover && !root.shown && root.tooltip-text != "";
 		triggered => {
+			if (TooltipHub.debug-log) {
+				debug("tooltip: タイマー発火");
+			}
 			root.shown = true;
 			TooltipHub.cursor-x = root.cursor-x;
 			TooltipHub.cursor-y = root.cursor-y;
@@ -89,6 +94,9 @@ export component TooltipSensor inherits TouchArea {
 	}
 
 	changed has-hover => {
+		if (TooltipHub.debug-log) {
+			debug("tooltip: hover 変化");
+		}
 		if (!self.has-hover) {
 			root.shown = false;
 			// 自分の報告がまだ表示中のときだけ消す (隣のコントロールへ hover
@@ -128,6 +136,7 @@ export component TooltipPopup inherits Rectangle {
 	y: 0;
 	width: TooltipHub.win-width;
 	height: TooltipHub.win-height;
+	background: #400000ff;
 	visible: TooltipHub.active && TooltipHub.text != "";
 
 	i-panel := Rectangle {
@@ -157,6 +166,9 @@ export component TooltipPopup inherits Rectangle {
 		// (テキスト確定 -> 幅確定 -> place 再呼び出し。テキスト設定の直後は
 		// 幅がまだ古い値のままで、ここで初めて正しいサイズが揃う)。
 		changed width => {
+			if (TooltipHub.debug-log) {
+				debug("tooltip: パネル幅確定");
+			}
 			TooltipHub.panel-w = self.width;
 			TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, self.width, self.height);
 		}
