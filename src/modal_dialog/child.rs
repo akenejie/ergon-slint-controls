@@ -334,28 +334,35 @@ fn install_event_hook(slot: &ModalSlot) {
 	let guard = slot.borrow();
 	let Some(session) = guard.as_ref() else { return };
 	let window = session.child.window();
-	// (X11/macOS) slint バックエンドは生成直後にホストのカラースキームを新規
-	// ウィンドウへ流し込み (winitwindowadapter の create_window)、さらに XDG
-	// 設定のポータル監視が全ウィンドウへ push する。テーマは生成後しばらく
-	// イベントごとに再主張して勝たせる。テーマ指定はプロパティ書き換えのみで
-	// ウィンドウ移動のような可視ちらつきはなく、落ち着いた後は OS 標準機構に
-	// 任せる。
-	#[cfg(not(windows))]
-	let theme_until = std::cell::Cell::new(
-		std::time::Instant::now() + std::time::Duration::from_millis(300),
-	);
 	window.on_winit_window_event(move |_win, event| {
 		use slint::winit_030::EventResult;
 		use slint::winit_030::winit::event::WindowEvent;
 		let Some(slot) = weak.upgrade() else { return EventResult::Propagate };
 		let child = slot.borrow().as_ref().map(|s| s.child.clone());
 		let Some(child) = child else { return EventResult::Propagate };
+		// (X11/macOS) slint バックエンドは生成直後にホストのカラースキームを新
+		// 規ウィンドウへ流し込み (winitwindowadapter の create_window)、さらに
+		// XDG 設定のポータル監視が全ウィンドウへ push する。生成時に焼き込ん
+		// だテーマやサイズ固定が上書きされることがあり、タイトルバーが黒くな
+		// ったりリサイズできたりする (実測)。イベントごとに冪等に再主張して勝
+		// たせる。正しければ何もしない (X プロパティの同値書き込みはイベント
+		// を発生させないため、ちらつき / 負荷はない)。テーマ指定はプロパティ
+		// 書き換えのみでウィンドウ移動のような可視ちらつきはなく、落ち着いた
+		// 後は OS 標準機構に任せる。
 		#[cfg(not(windows))]
-		if std::time::Instant::now() < theme_until.get() {
-			if let Some(theme) = backend::peek_next_child_theme() {
-				let cw = child.window();
-				cw.with_winit_window(|w| w.set_theme(Some(theme)));
-			}
+		{
+			let cw = child.window();
+			cw.with_winit_window(|w| {
+				// 生成属性 (非リサイズ) が反映されなかった場合の再主張。
+				// winit の is_resizable() はキャッシュしたヒントを読むだけ。
+				if w.is_resizable() {
+					w.set_resizable(false);
+				}
+				// テーマ: 生成時に焼き込んだ値 (親に揃える) を再主張する。
+				if let Some(theme) = backend::peek_next_child_theme() {
+					w.set_theme(Some(theme));
+				}
+			});
 		}
 		// (Windows) WS_EX_DLGMODALFRAME は winit パッチが生成時から維持する。
 		// 残る所望スタイル (閉じるボタンのみ・非リサイズ) は winit が
