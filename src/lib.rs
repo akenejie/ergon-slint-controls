@@ -149,6 +149,14 @@ fn wire_tooltip_placement(
 	hub.debug_log.set(tooltip_debug_enabled());
 	let tree_weak = root_item_tree_weak.clone();
 	let debug_log = tooltip_debug_enabled();
+	// ウィンドウ サイズのキャッシュ: place は表示レイヤのジオメトリ バインデ
+	// ィングから呼ばれるため、ここで X のラウンドトリップ (window.size() =
+	// XGetGeometry) を行うと、ダイアログのマップ / 配置シーケンス中に XSync
+	// が走り、WM の配置処理とインターリーブしてちらつきの原因になる (実測)。
+	// 最初の呼び出しで 1 度だけ読んでキャッシュし、以後はそれを使う。メイン
+	// ウィンドウのリサイズ後は初回の反転判定が古いサイズ基準になる制限があ
+	// るが、ツールチップは一時的であり実害は小さい。
+	let cache = core::cell::Cell::new(None::<(f32, f32)>);
 	hub.place.set_handler(move |(cursor_x, cursor_y, w, h): &(sp::Coord, sp::Coord, sp::Coord, sp::Coord)| {
 		let fallback = || {
 			generated::PanelPlacement { px: *cursor_x, py: *cursor_y }
@@ -157,11 +165,18 @@ fn wire_tooltip_placement(
 		let mut adapter = None;
 		sp::VRc::borrow_pin(&tree).as_ref().window_adapter(false, &mut adapter);
 		let Some(adapter) = adapter else { return fallback() };
-		let window = adapter.window();
-		let scale = window.scale_factor();
-		let size = window.size();
-		let win_w = size.width as f32 / scale;
-		let win_h = size.height as f32 / scale;
+		let (win_w, win_h) = match cache.get() {
+			Some((win_w, win_h)) => (win_w, win_h),
+			None => {
+				let window = adapter.window();
+				let scale = window.scale_factor();
+				let size = window.size();
+				let win_w = size.width as f32 / scale;
+				let win_h = size.height as f32 / scale;
+				cache.set(Some((win_w, win_h)));
+				(win_w, win_h)
+			}
+		};
 		let px = crate::platform::place_tooltip_axis(*cursor_x, *w, win_w);
 		let py = crate::platform::place_tooltip_axis(*cursor_y, *h, win_h);
 		if debug_log {
