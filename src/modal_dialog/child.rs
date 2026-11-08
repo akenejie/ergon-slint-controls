@@ -451,25 +451,10 @@ fn apply_modal_when_ready<P: ComponentHandle + 'static>(
 		}
 		return;
 	}
-	// マップ直前の属性検証: slint バックエンドのカラースキーム push や WM 側
-	// の属性適用が、生成時に焼き込んだテーマ / サイズ固定を上書きすることが
-	// ある (実測)。マップ後の修正は WM の再装飾 = 表示位置のガタつきになる
-	// ため、**見えないうちに**ここで検証して修正する。
-	#[cfg(not(windows))]
-	{
-		use slint::winit_030::WinitWindowAccessor;
-		let guard = slot.borrow();
-		if let Some(session) = guard.as_ref() {
-			session.child.window().with_winit_window(|w| {
-				if w.is_resizable() {
-					w.set_resizable(false);
-				}
-				if let Some(theme) = backend::peek_next_child_theme() {
-					w.set_theme(Some(theme));
-				}
-			});
-		}
-	}
+	// 属性の検証 / 修正はイベント フック (install_event_hook) が**マップ前**
+	// (is_visible == false の間) に冪等に行う。ここ (show() 後に走る) で
+	// set_resizable / set_theme すると WM の再装飾 = 表示位置のガタつき /
+	// ちらつきになるため触らない (実測)。
 	let Some(parent) = parent_weak.upgrade() else { return };
 	{
 		let guard = slot.borrow();
