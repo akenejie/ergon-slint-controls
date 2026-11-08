@@ -11,11 +11,13 @@
 // 置いてもはみ出す場合だけ例外で、ウィンドウ内に収める (クランプ)。標準の
 // 8px の隙間はなく、ポインタが角に密着する。
 //
-// 配置の計算は Rust 側 (platform::setup_window が TooltipHub.place へ配線) で
-// 行う。.slint の位置バインディングに条件式を書かないのは意図的: 実測のとお
-// り、子要素のバインディングに三項演算子 (Condition) があるとコンポーネント
-// ルートの width: 100% の解決が壊れる (slint コンパイラの default_geometry の
-// 挙動)。ウィンドウ サイズは Rust から実地で読むため、.slint 側に百分率も不要。
+// 配置の計算は Rust 側 (SharedGlobals::new が TooltipHub.place へ配線) で
+// 行う。.slint の位置バインディングに条件式を書かず、表示レイヤの width /
+// height も百分率にしないのは意図的: 実測のとおり、(a) 子要素のバインディ
+// ングの三項演算子 (Condition)、(b) ルートの width: 100% の 2 つが揃うとコ
+// ンパイラの default_geometry がルートの幅の解決に失敗する (「Cannot find
+// parent property to apply relative length」)。百分率の代わりにウィンドウ
+// サイズを Rust から実地で読んで win-width / win-height へ流し込む。
 //
 // 構成は MenuHintHub / MenuHintPopup と同じハブ方式:
 // - TooltipSensor: コントロールの全面を包むホバー センサ (各コントロールが
@@ -27,9 +29,8 @@
 //   (MenuHintPopup と同じ)。TouchArea を持たない透明レイヤなので、クリック
 //   は下のコントロールへ素通しする
 //
-// setup_window を呼んでいないアプリでは place が未配線のためツールチップは
-// 出ない (active が false のまま。メニュー / フォントの機能も setup_window
-// 前提なので、実質的に必須の呼び出し)。
+// place は SharedGlobals::new がウィンドウごとに配線するため、アプリ側に
+// 必要なコードは無い。
 
 // 表示中のツールチップ。実体はウィンドウごと (from_library)。
 export global TooltipHub {
@@ -44,7 +45,10 @@ export global TooltipHub {
 	// 配置結果 (Rust の place が書く。表示レイヤが読む)。
 	in-out property <length> panel-x: 0px;
 	in-out property <length> panel-y: 0px;
-	// setup_window が place を配線済みか (未配線なら表示しない)。
+	// ウィンドウのサイズ (Rust の place が書く。表示レイヤのルート サイズ)。
+	in-out property <length> win-width: 0px;
+	in-out property <length> win-height: 0px;
+	// place が配線済みか (未配線なら表示しない)。
 	in-out property <bool> active: false;
 
 	// 配置を依頼する (センサから。Rust 側で計算して panel-x / panel-y へ書く)。
@@ -77,8 +81,10 @@ export component TooltipSensor inherits TouchArea {
 		running: root.has-hover && !root.shown && root.tooltip-text != "";
 		triggered => {
 			root.shown = true;
+			TooltipHub.cursor-x = root.cursor-x;
+			TooltipHub.cursor-y = root.cursor-y;
 			TooltipHub.text = root.tooltip-text;
-			TooltipHub.place(root.cursor-x, root.cursor-y, TooltipHub.panel-w, TooltipHub.panel-h);
+			TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, TooltipHub.panel-w, TooltipHub.panel-h);
 		}
 	}
 
@@ -96,12 +102,16 @@ export component TooltipSensor inherits TouchArea {
 	// 表示中はカーソルに追従する。
 	changed mouse-x => {
 		if (root.shown) {
-			TooltipHub.place(root.cursor-x, root.cursor-y, TooltipHub.panel-w, TooltipHub.panel-h);
+			TooltipHub.cursor-x = root.cursor-x;
+			TooltipHub.cursor-y = root.cursor-y;
+			TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, TooltipHub.panel-w, TooltipHub.panel-h);
 		}
 	}
 	changed mouse-y => {
 		if (root.shown) {
-			TooltipHub.place(root.cursor-x, root.cursor-y, TooltipHub.panel-w, TooltipHub.panel-h);
+			TooltipHub.cursor-x = root.cursor-x;
+			TooltipHub.cursor-y = root.cursor-y;
+			TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, TooltipHub.panel-w, TooltipHub.panel-h);
 		}
 	}
 
@@ -114,6 +124,10 @@ export component TooltipSensor inherits TouchArea {
 // パネルの座標はウィンドウ座標そのまま (レイヤはウィンドウの (0,0) に置かれ
 // るため)。
 export component TooltipPopup inherits Rectangle {
+	x: 0;
+	y: 0;
+	width: TooltipHub.win-width;
+	height: TooltipHub.win-height;
 	visible: TooltipHub.active && TooltipHub.text != "";
 
 	i-panel := Rectangle {
@@ -139,8 +153,13 @@ export component TooltipPopup inherits Rectangle {
 			font-size: 1rem;
 		}
 
-		// パネルのサイズをハブへ伝える (配置計算の材料)。
-		changed width => { TooltipHub.panel-w = self.width; }
+		// パネルのサイズをハブへ伝え、サイズが確定した時点で配置をやり直す
+		// (テキスト確定 -> 幅確定 -> place 再呼び出し。テキスト設定の直後は
+		// 幅がまだ古い値のままで、ここで初めて正しいサイズが揃う)。
+		changed width => {
+			TooltipHub.panel-w = self.width;
+			TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, self.width, self.height);
+		}
 		changed height => { TooltipHub.panel-h = self.height; }
 	}
 }

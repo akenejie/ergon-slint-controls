@@ -138,11 +138,11 @@ fn wire_tooltip_placement(
 		let size = window.size();
 		let win_w = size.width as f32 / scale;
 		let win_h = size.height as f32 / scale;
-		hub_for_handler.panel_x.set(sp::LogicalLength::new(crate::platform::place_tooltip_axis(
-			*cursor_x, *w, win_w,
-		)));
-		hub_for_handler.panel_y.set(sp::LogicalLength::new(crate::platform::place_tooltip_axis(
-			*cursor_y, *h, win_h,
-		)));
+		let px = crate::platform::place_tooltip_axis(*cursor_x, *w, win_w);
+		let py = crate::platform::place_tooltip_axis(*cursor_y, *h, win_h);
+		hub_for_handler.win_width.set(sp::LogicalLength::new(win_w));
+		hub_for_handler.win_height.set(sp::LogicalLength::new(win_h));
+		hub_for_handler.panel_x.set(sp::LogicalLength::new(px));
+		hub_for_handler.panel_y.set(sp::LogicalLength::new(py));
 	});
 }
