@@ -182,26 +182,24 @@ pub fn activate_window_until_focused(win: u32) {
 }
 
 // X ウィンドウへの単発の活性化要求 (`_NET_ACTIVE_WINDOW` ClientMessage)。
-// activate_window_until_focused が要求送信を内包するため現在使用していない。
-// 知見: WM に管理された (マップされた) 後に送ること (マップ前は無視される)。
-// タイムスタンプは実時刻ではなく 0 (時刻指定なし) にするのが確実 — 実時刻だ
-// と Mutter の display->last_user_time との比較で拒否されることがある
-// (activate_window_until_focused のドキュメント参照)。
-//
-// pub fn activate_window(win: u32, time: u32) {
-// 	use x11rb::connection::Connection as _;
-// 	use x11rb::protocol::xproto::ClientMessageEvent;
-// 	use x11rb::protocol::xproto::ConnectionExt as _;
-// 	use x11rb::protocol::xproto::EventMask;
-// 	let Ok((conn, _)) = x11rb::connect(None) else { return };
-// 	let Some(state) = intern(&conn, b"_NET_ACTIVE_WINDOW") else { return };
-// 	let root = conn.setup().roots[0].root;
-// 	let event = ClientMessageEvent::new(32, win, state, [1u32, time, 0, 0, 0]).to_owned();
-// 	let _ = conn
-// 		.send_event(false, root, EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY, event)
-// 		.map(|c| c.ignore_error());
-// 	let _ = conn.flush();
-// }
+// タイムスタンプは実時刻ではなく 0 (EWMH の「時刻指定なし」) にするのが確実 —
+// 実時刻だと Mutter の display->last_user_time との比較で拒否されることがある
+// (activate_window_until_focused のドキュメント参照)。WM に管理された (マップ
+// された) 後に送ること (マップ前は無視される)。
+pub fn activate_window(win: u32) {
+	use x11rb::connection::Connection as _;
+	use x11rb::protocol::xproto::ConnectionExt as _;
+	use x11rb::protocol::xproto::ClientMessageEvent;
+	use x11rb::protocol::xproto::EventMask;
+	let Ok((conn, _)) = x11rb::connect(None) else { return };
+	let Some(state) = intern(&conn, b"_NET_ACTIVE_WINDOW") else { return };
+	let root = conn.setup().roots[0].root;
+	let event = ClientMessageEvent::new(32, win, state, [1u32, 0, 0, 0, 0]).to_owned();
+	let _ = conn
+		.send_event(false, root, EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY, event)
+		.map(|c| c.ignore_error());
+	let _ = conn.flush();
+}
 
 /// X ウィンドウへ `_NET_WM_USER_TIME` を書く。
 ///
