@@ -149,16 +149,13 @@ export component TooltipPopup inherits Rectangle {
 			font-size: 1rem;
 		}
 
-		// パネルのサイズをハブへ伝え、サイズが確定した時点で配置をやり直す
-		// (テキスト確定 -> 幅確定 -> place 再呼び出し。テキスト設定の直後は
-		// 幅がまだ古い値のままで、ここで初めて正しいサイズが揃う)。
-		changed width => {
-			if (TooltipHub.debug-log) {
-				debug("tooltip: パネル幅確定");
-			}
-			TooltipHub.panel-w = self.width;
-			TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, self.width, self.height);
-		}
+		// パネルのサイズをハブへ伝える (place の引数として使われる)。
+		// ここで place を再呼び出ししないのは意図的: changed はレイアウト確定
+		// のたびに (ウィンドウ表示中も) 発火し、コールバック -> ハブ書き込み
+		// -> 再レイアウトの連鎖が表示中のちらつきになるため (実測)。サイズは
+		// ここで伝わるので、次の place 呼び出し (ホバー開始時) から正しい値
+		// が使われる。
+		changed width => { TooltipHub.panel-w = self.width; }
 		changed height => { TooltipHub.panel-h = self.height; }
 	}
 }
