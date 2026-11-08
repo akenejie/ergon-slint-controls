@@ -133,32 +133,35 @@ fn tooltip_debug_enabled() -> bool {
 	std::env::var("SLINT_TOOLTIP_DEBUG").ok().as_deref() == Some("1")
 }
 
+/// [`TooltipHub`](crate::TooltipHub) の配置コールバック (`place`) を配線する。
+///
+/// ルート コンポーネント (ウィンドウ) ごとの実体に対して呼ばれる。ハンドラは
+/// **純粋** (副作用なし): 表示レイヤのジオメトリ バインディングから呼ばれるた
+/// め、ウィンドウ サイズを実地で読み、[platform の
+/// `place_tooltip_axis`](crate::platform::place_tooltip_axis) で「ポインタを
+/// パネルの四つ角のいずれかに合わせる」位置を求めて返すだけ。書き込みを挟ま
+/// ないのは意図的: バインディング評価中のハブ書き込みは再レイアウトの連鎖に
+/// なり、表示中のちらつきの原因だった (実測)。
 fn wire_tooltip_placement(
 	root_item_tree_weak: sp::VWeak<sp::ItemTreeVTable>,
 	hub: &core::pin::Pin<sp::Rc<generated::InnerTooltipHub>>,
 ) {
-	// active の有効化は init_globals で行う (ここで設定しても内部 init の
-	// 既定値書き込みで上書きされるため)。
-	// 切り分け用: SLINT_TOOLTIP_DEBUG=1 でセンサ / 配置のログを stderr へ
-	// (debug-log も内部 init で上書きされるため、init_globals で改めて設定)。
-	let debug_log = tooltip_debug_enabled();
-	hub.debug_log.set(debug_log);
+	hub.debug_log.set(tooltip_debug_enabled());
 	let tree_weak = root_item_tree_weak.clone();
-	let hub_for_handler = hub.clone();
+	let debug_log = tooltip_debug_enabled();
 	hub.place.set_handler(move |(cursor_x, cursor_y, w, h): &(sp::Coord, sp::Coord, sp::Coord, sp::Coord)| {
-		if debug_log {
-			eprintln!("[tooltip] place: cursor=({cursor_x},{cursor_y}) panel-size=({w},{h})");
-		}
-		let Some(tree) = tree_weak.upgrade() else {
-			if debug_log { eprintln!("[tooltip] ルート木の upgrade 失敗"); }
-			return;
+		let fallback = || {
+			generated::PanelPlacement {
+				px: *cursor_x,
+				py: *cursor_y,
+				ww: 0.0,
+				wh: 0.0,
+			}
 		};
+		let Some(tree) = tree_weak.upgrade() else { return fallback() };
 		let mut adapter = None;
 		sp::VRc::borrow_pin(&tree).as_ref().window_adapter(false, &mut adapter);
-		let Some(adapter) = adapter else {
-			if debug_log { eprintln!("[tooltip] window_adapter なし"); }
-			return;
-		};
+		let Some(adapter) = adapter else { return fallback() };
 		let window = adapter.window();
 		let scale = window.scale_factor();
 		let size = window.size();
@@ -167,11 +170,13 @@ fn wire_tooltip_placement(
 		let px = crate::platform::place_tooltip_axis(*cursor_x, *w, win_w);
 		let py = crate::platform::place_tooltip_axis(*cursor_y, *h, win_h);
 		if debug_log {
-			eprintln!("[tooltip] 配置: win=({win_w},{win_h}) -> panel=({px},{py})");
+			eprintln!("[tooltip] 配置: cursor=({cursor_x},{cursor_y}) panel-size=({w},{h}) win=({win_w},{win_h}) -> panel=({px},{py})");
 		}
-		hub_for_handler.win_width.set(sp::LogicalLength::new(win_w));
-		hub_for_handler.win_height.set(sp::LogicalLength::new(win_h));
-		hub_for_handler.panel_x.set(sp::LogicalLength::new(px));
-		hub_for_handler.panel_y.set(sp::LogicalLength::new(py));
+		generated::PanelPlacement {
+			px,
+			py,
+			ww: win_w,
+			wh: win_h,
+		}
 	});
 }

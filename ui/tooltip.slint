@@ -11,50 +11,54 @@
 // 置いてもはみ出す場合だけ例外で、ウィンドウ内に収める (クランプ)。標準の
 // 8px の隙間はなく、ポインタが角に密着する。
 //
-// 配置の計算は Rust 側 (SharedGlobals::new が TooltipHub.place へ配線) で
-// 行う。.slint の位置バインディングに条件式を書かず、表示レイヤの width /
-// height も百分率にしないのは意図的: 実測のとおり、(a) 子要素のバインディ
-// ングの三項演算子 (Condition)、(b) ルートの width: 100% の 2 つが揃うとコ
-// ンパイラの default_geometry がルートの幅の解決に失敗する (「Cannot find
-// parent property to apply relative length」)。百分率の代わりにウィンドウ
-// サイズを Rust から実地で読んで win-width / win-height へ流し込む。
+// 配置の計算は Rust 側 (SharedGlobals::new が TooltipHub.place へ配線) の
+// **純粋コールバック**で行う。表示レイヤのジオメトリ バインディングから直接
+// 呼び出すため、ハブへの書き込みがなく (純粋 = 副作用なし)、レイアウト中の
+// コールバック -> ハブ書き込み -> 再レイアウトの連鎖 (表示中のちらつきの原
+// 因) がない。パネルのサイズは place の引数として self.width / self.height
+// を渡す (バインディング評価時に現在値が得られるため、テキスト確定直後でも
+// 古いサイズにならない)。ウィンドウ サイズも Rust から実地で読むため、
+// 百分率は使わない (百分率 + 子バインディングの条件式は default_geometry の
+// ルート幅解決を壊す。実測)。
 //
 // 構成は MenuHintHub / MenuHintPopup と同じハブ方式:
 // - TooltipSensor: コントロールの全面を包むホバー センサ (各コントロールが
 //   使う)。遅延後に TooltipHub へ報告する
-// - TooltipHub: 表示中のツールチップ (1 件) と配置結果。from_library の
-//   グローバルはルート コンポーネント (= ウィンドウ) ごとの実体なので、
-//   複数ウィンドウでも互いに混線しない
+// - TooltipHub: 表示中のツールチップ (1 件)。from_library のグローバルは
+//   ルート コンポーネント (= ウィンドウ) ごとの実体なので、複数ウィンドウ
+//   でも互いに混線しない
 // - TooltipPopup: 表示レイヤ。アプリのウィンドウ ルートの最後に置く
 //   (MenuHintPopup と同じ)。TouchArea を持たない透明レイヤなので、クリック
 //   は下のコントロールへ素通しする
 //
-// place は SharedGlobals::new がウィンドウごとに配線するため、アプリ側に
-// 必要なコードは無い。
+// 表示位置は「表示開始時のカーソル位置」で確定し、以後カーソルに追従しない
+// (センサはタイマー発火時に 1 回だけカーソルを報告する)。
+
+// place の配置結果。px / py = パネルの配置座標 (ウィンドウ座標)、
+// ww / wh = ウィンドウのサイズ (表示レイヤのルート サイズ)。
+export struct PanelPlacement {
+	px: length,
+	py: length,
+	ww: length,
+	wh: length,
+}
 
 // 表示中のツールチップ。実体はウィンドウごと (from_library)。
 export global TooltipHub {
 	// 表示する説明。空 = 非表示。
 	in-out property <string> text: "";
-	// 報告元カーソルのウィンドウ座標 (センサが書く)。
+	// 表示開始時のカーソルのウィンドウ座標 (センサが書く)。
 	in-out property <length> cursor-x: 0px;
 	in-out property <length> cursor-y: 0px;
-	// パネルのサイズ (表示レイヤが書く。配置計算の材料)。
-	in-out property <length> panel-w: 0px;
-	in-out property <length> panel-h: 0px;
-	// 配置結果 (Rust の place が書く。表示レイヤが読む)。
-	in-out property <length> panel-x: 0px;
-	in-out property <length> panel-y: 0px;
-	// ウィンドウのサイズ (Rust の place が書く。表示レイヤのルート サイズ)。
-	in-out property <length> win-width: 0px;
-	in-out property <length> win-height: 0px;
 	// place が配線済みか (未配線なら表示しない)。
 	in-out property <bool> active: false;
 	// 切り分け用ログ (SLINT_TOOLTIP_DEBUG=1 で Rust 側から有効化)。
 	in-out property <bool> debug-log: false;
 
-	// 配置を依頼する (センサから。Rust 側で計算して panel-x / panel-y へ書く)。
-	callback place(cursor-x: length, cursor-y: length, panel-w: length, panel-h: length);
+	// 配置を計算する (純粋: 副作用なし。表示レイヤのジオメトリ バインディン
+	// グから呼ばれる。Rust 側でウィンドウ サイズを実地で読み、四つ角のいずれ
+	// かにカーソルを合わせた位置を返す)。
+	pure callback place(cursor-x: length, cursor-y: length, panel-w: length, panel-h: length) -> PanelPlacement;
 }
 
 // コントロール全面のホバー センサ。中身 (@children) を包んで使う。
@@ -66,14 +70,16 @@ export global TooltipHub {
 // 取っても、このセンサの has-hover / mouse-x / mouse-y は常に更新される。
 // クリック処理は持たない (子に任せる)。無効なコントロールの上でも hover を
 // 取れるよう、このセンサ自身は常に有効 (子が無効の間は子が押下を無視するだ
-// けで、センサが押下を握る点は標準 Tooltip と異なる)。
+// けで、センサが押下を握る点は標準 Tooltip と異なる)。TouchArea 継承なので、
+// 既存の TouchArea (ドラッグ ハンドラなど) をそのまま置き換えて使うことも
+// できる。
 export component TooltipSensor inherits TouchArea {
 	// マウスを重ねると出る説明。空なら何もしない。
 	in property <string> tooltip-text;
-	// 表示を開始したか (Timer の再発火防止と位置追従のゲート)。
+	// 表示を開始したか (Timer の再発火防止のゲート)。
 	private property <bool> shown: false;
 
-	// カーソルのウィンドウ座標 (absolute-position はウィンドウ基準)。
+	// 表示開始時のカーソルのウィンドウ座標 (absolute-position はウィンドウ基準)。
 	private property <length> cursor-x: self.absolute-position.x + self.mouse-x;
 	private property <length> cursor-y: self.absolute-position.y + self.mouse-y;
 
@@ -89,7 +95,6 @@ export component TooltipSensor inherits TouchArea {
 			TooltipHub.cursor-x = root.cursor-x;
 			TooltipHub.cursor-y = root.cursor-y;
 			TooltipHub.text = root.tooltip-text;
-			TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, TooltipHub.panel-w, TooltipHub.panel-h);
 		}
 	}
 
@@ -112,23 +117,21 @@ export component TooltipSensor inherits TouchArea {
 
 // ツールチップの表示レイヤ。**ウィンドウのルートの最後に置く** (MenuHintPopup
 // と同じ)。TouchArea を持たない透明レイヤなので、表示中もクリックは下の
-// コントロールへ素通しする。ルートのサイズは百分率にせず、Rust が流し込む
-// ウィンドウ サイズ (win-width / win-height) に束縛する (実測: 百分率を条件
-// 式つきの子バインディングと組み合わせるとルートの解決が壊れるため)。
+// コントロールへ素通しする。ルートのサイズは place が返すウィンドウ サイズ
+// (ww / wh) に束縛する (百分率は default_geometry のルート幅解決を壊すため)。
 // パネルの座標はウィンドウ座標そのまま (レイヤはウィンドウの (0,0) に置かれ
-// るため)。表示位置は「表示開始時のカーソル位置」で確定し、以後は追従しない
-// (サイズが確定した時点での再配置のみ。位置の再計算はカーソル追従を意味し
-// ない)。
+// るため)。表示位置は「表示開始時のカーソル位置」で確定し、以後カーソルに追
+// 従しない。
 export component TooltipPopup inherits Rectangle {
 	x: 0;
 	y: 0;
-	width: TooltipHub.win-width;
-	height: TooltipHub.win-height;
+	width: TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, 0px, 0px).ww;
+	height: TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, 0px, 0px).wh;
 	visible: TooltipHub.active && TooltipHub.text != "";
 
 	i-panel := Rectangle {
-		x: TooltipHub.panel-x;
-		y: TooltipHub.panel-y;
+		x: TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, self.width, self.height).px;
+		y: TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, self.width, self.height).py;
 		width: i-text.preferred-width + 16px;
 		height: i-text.preferred-height + 4px;
 		background: #ffffff;
@@ -148,14 +151,5 @@ export component TooltipPopup inherits Rectangle {
 			color: #202020;
 			font-size: 1rem;
 		}
-
-		// パネルのサイズをハブへ伝える (place の引数として使われる)。
-		// ここで place を再呼び出ししないのは意図的: changed はレイアウト確定
-		// のたびに (ウィンドウ表示中も) 発火し、コールバック -> ハブ書き込み
-		// -> 再レイアウトの連鎖が表示中のちらつきになるため (実測)。サイズは
-		// ここで伝わるので、次の place 呼び出し (ホバー開始時) から正しい値
-		// が使われる。
-		changed width => { TooltipHub.panel-w = self.width; }
-		changed height => { TooltipHub.panel-h = self.height; }
 	}
 }
