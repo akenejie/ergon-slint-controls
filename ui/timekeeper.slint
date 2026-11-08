@@ -13,7 +13,8 @@ import {
 	MenuAccessKey, AccessKeyHub, MenuOpenHub, AccessKeyLabel,
 	FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView,
 	MenuHintPopup, MenuDismissLayer, TooltipPopup,
-	Label, SmallButton, ModeToggleButton, CosmicCheckBox, SpinBox, TextBox, AppTooltip,
+	Label, SmallButton, ModeToggleButton, CosmicCheckBox, SpinBox, TextBox,
+	TooltipSensor,
 } from "@ergon_slint_controls";
 // 「CSV を書き出す」ダイアログは相対 import で同じコンパイル単位に取り込む
 // (export もここから。timekeeper-export.slint 内のライブラリ参照も
@@ -153,7 +154,11 @@ export component TimeKeeperWindow inherits Window {
 				drop-shadow-blur: 14px;
 				drop-shadow-color: #00000022;
 
-				drag := TouchArea {
+				// ドラッグ操作そのものを TooltipSensor にさせる (TouchArea 継承
+				// なのでハンドラはそのまま。ホバー 500ms 後にライブラリの統一
+				// ツールチップ (TooltipPopup) へ報告される)。
+				drag := TooltipSensor {
+					tooltip-text: "ドラッグで移動できます";
 					// 掴んだときのカード内オフセット (押下時に固定する)。
 					// moved のたびに更新すると、カードが動いた分だけ
 					// mouse-x/y も動いて移動量が相殺され、半分の距離を
@@ -195,11 +200,6 @@ export component TimeKeeperWindow inherits Window {
 						color: #888;
 						horizontal-alignment: center;
 					}
-				}
-
-				// std-widgets の Tooltip の中身として AppTooltip を使う
-				if drag.has-hover : Tooltip {
-					AppTooltip { text: "ドラッグで移動できます"; }
 				}
 			}
 
