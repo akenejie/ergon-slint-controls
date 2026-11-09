@@ -148,7 +148,9 @@ fn wire_tooltip_placement(
 ) {
 	hub.debug_log.set(tooltip_debug_enabled());
 	let tree_weak = root_item_tree_weak.clone();
-	let debug_log = tooltip_debug_enabled();
+	// (デバッグコード・コメントアウト) 配置計算の確認用。使うときはコメン
+	// トを外す (SLINT_TOOLTIP_DEBUG=1)。
+	// let debug_log = tooltip_debug_enabled();
 	// ウィンドウ サイズのキャッシュ: place は表示レイヤのジオメトリ バインデ
 	// ィングから呼ばれるため、ここで X のラウンドトリップ (window.size() =
 	// XGetGeometry) を行うと、ダイアログのマップ / 配置シーケンス中に XSync
@@ -179,9 +181,11 @@ fn wire_tooltip_placement(
 		};
 		let px = crate::platform::place_tooltip_axis(*cursor_x, *w, win_w);
 		let py = crate::platform::place_tooltip_axis(*cursor_y, *h, win_h);
-		if debug_log {
-			eprintln!("[tooltip] 配置: cursor=({cursor_x},{cursor_y}) panel-size=({w},{h}) win=({win_w},{win_h}) -> panel=({px},{py})");
-		}
+		// (デバッグコード・コメントアウト) 配置計算の確認用。使うときはコメ
+		// ントを外す (上の debug_log の宣言も一緒に)。
+		// if debug_log {
+		// 	eprintln!("[tooltip] 配置: cursor=({cursor_x},{cursor_y}) panel-size=({w},{h}) win=({win_w},{win_h}) -> panel=({px},{py})");
+		// }
 		generated::PanelPlacement { px, py }
 	});
 }

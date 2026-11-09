@@ -85,9 +85,12 @@ export component TooltipSensor inherits TouchArea {
 		interval: 500ms;
 		running: root.has-hover && !root.shown && root.tooltip-text != "";
 		triggered => {
-			if (TooltipHub.debug-log) {
-				debug("tooltip: タイマー発火");
-			}
+			// (デバッグコード・コメントアウト) タイマー発火の確認用。使うと
+			// きはコメントを外す (TooltipHub.debug-log を SLINT_TOOLTIP_DEBUG=1
+			// で有効化してから)。
+			// if (TooltipHub.debug-log) {
+			// 	debug("tooltip: タイマー発火");
+			// }
 			root.shown = true;
 			TooltipHub.cursor-x = root.cursor-x;
 			TooltipHub.cursor-y = root.cursor-y;
@@ -96,9 +99,12 @@ export component TooltipSensor inherits TouchArea {
 	}
 
 	changed has-hover => {
-		if (TooltipHub.debug-log) {
-			debug("tooltip: hover 変化");
-		}
+		// (デバッグコード・コメントアウト) hover 変化の確認用。使うときはコ
+		// メントを外す (TooltipHub.debug-log を SLINT_TOOLTIP_DEBUG=1 で有効
+		// 化してから)。
+		// if (TooltipHub.debug-log) {
+		// 	debug("tooltip: hover 変化");
+		// }
 		if (!self.has-hover) {
 			root.shown = false;
 			// 自分の報告がまだ表示中のときだけ消す (隣のコントロールへ hover

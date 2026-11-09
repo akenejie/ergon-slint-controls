@@ -291,7 +291,10 @@ export component MainWindow inherits Window {
 ウ (設定ダイアログ等) でも混線しない。アプリ側に必要なコードは上の 1 行だけ。
 
 切り分け用に、環境変数 `SLINT_TOOLTIP_DEBUG=1` を付けるとセンサ / 配置のロ
-グが stderr へ出る:
+グが stderr へ出る (本筋の調査が済んだため、現在はログ出力をコメントアウト
+済み。使うときは `src/lib.rs` の `wire_tooltip_placement` と
+`ui/tooltip.slint` の TooltipSensor 内の「デバッグコード・コメントアウト」
+部分を外す):
 
 ```sh
 SLINT_TOOLTIP_DEBUG=1 cargo run --example timekeeper --features modal-dialog
