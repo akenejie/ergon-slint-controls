@@ -363,6 +363,17 @@ fn install_event_hook(slot: &ModalSlot) {
 			}
 			// 生成属性 (非リサイズ) が反映されなかった場合の再主張。
 			// winit の is_resizable() はキャッシュしたヒントを読むだけ。
+			//
+			// 注意: winit の is_visible() は内部状態が YesWait (マップ要求済
+			// み・マップ未確定) のときも Some(false) を返す。つまりこの再主張
+			// はマップ要求後のイベントでも発火しうる。マップ後の
+			// set_resizable(false) は WM_NORMAL_HINTS / _MOTIF_WM_HINTS の書
+			// き換えになり、Mutter が装飾を作り直してクライアントがフレーム
+			// 内で動く (表示直後の位置ずれ。実測: ConfigureNotify pos=(10,40)
+			// → pos=(1,33))。v0.30.13-modal.14 のフォークで modal ウィンドウ
+			// は生成時にヒントが凍結されるため、この呼び出しは安全な no-op
+			// になった。フォークが無い (凍結の無い) winit では、ここでマップ
+			// 後に set_resizable を呼ぶと位置ずれが再発する点に注意。
 			if w.is_resizable() {
 				w.set_resizable(false);
 			}
