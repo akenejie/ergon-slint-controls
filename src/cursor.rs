@@ -118,11 +118,16 @@ struct X11CursorState {
 #[cfg(target_os = "linux")]
 fn free_x11_ring(st: &X11CursorState) {
 	// カーソルを載せたウィンドウから外す (FreeCursor だけではウィンドウに
-	// 設定済みのカーソルは外れない)。
+	// 設定済みのカーソルは外れない)。注意: x11rb の aux で cursor: None は
+	// 「この属性を変更しない」の意味であり、外すには明示的に 0 (XCB_NONE =
+	// 親のカーソル = 既定) を指定する。None のままではカーソルが載ったまま
+	// になり、winit 側は内部状態が既に Default と判断して set_cursor をス
+	// キップするため、標準カーソルへ戻らなかった (実測: 編集領域を出ても戻
+	// らない)。
 	let _ = xproto::change_window_attributes(
 		&st.conn,
 		st.target,
-		&xproto::ChangeWindowAttributesAux { cursor: None, ..Default::default() },
+		&xproto::ChangeWindowAttributesAux { cursor: Some(0), ..Default::default() },
 	)
 	.map(|c| c.ignore_error());
 	let _ = render::free_picture(&st.conn, st.picture).map(|c| c.ignore_error());
