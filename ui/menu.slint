@@ -321,7 +321,11 @@ export struct MenuBarMenu {
 }
 
 export global MenuKeyControl {
-	// バー項目の並び (アプリが束ねる)。
+	// バー項目の並び (アプリが登録する)。**スナップショット**: 登録は式の
+	// 評価時の値で固定されるため、項目モデルが差し替わる (enabled の依存が
+	// 変わる) たびに再登録が必要。アプリは init と、モデルを替えるプロパ
+	// ティの changed ハンドラから再登録すること (再登録しないとキー操作が
+	// 古い enabled のままになる — 実測)。
 	in-out property <[MenuBarMenu]> menus: [];
 
 	// 項目がキー操作で発火された (アプリがハンドラを登録する)。
@@ -329,9 +333,10 @@ export global MenuKeyControl {
 	callback activate(int, int);
 
 	// ラベル (Label / AccessKeyHub 対応) のアクセスキー一覧 (アプリが登録す
-	// る。MenuAccessKey.parse(タイトル).key の形)。メニューが閉じている間に
-	// 押された文字をここで照合し、一致すれば AccessKeyHub.press でラベルへ
-	// 通知する (ラベルの access-key-pressed が発火する)。
+	// る。MenuAccessKey.parse(タイトル).key の形)。メニューが閉じている間
+	// に押された文字をここで照合し、一致すれば AccessKeyHub.press でラベル
+	// へ通知する (ラベルの access-key-pressed が発火する)。menus と同じく
+	// スナップショットのため、依存が変わったら再登録する。
 	in-out property <[string]> label-keys: [];
 
 	// ボタンのアクセスキー一覧 (アプリが登録する)。メニューが閉じている間

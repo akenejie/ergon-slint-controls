@@ -182,6 +182,9 @@ where
 	let registry = ui.global::<MenuKeyControl>();
 	let hub = ui.global::<MenuOpenHub>();
 	let open = hub.get_open();
+	// バー項目の並びは呼び出しのたびに現在値を取得する (項目の enabled は
+	// モデルの差し替えで変化する。init 時のスナップショットを読むと古い状
+	// 態のままになる — 実測)。
 	let menus = registry.get_menus();
 	let menu_row = |menu: i32| -> Option<MenuBarMenu> {
 		if menu < 0 { None } else { menus.row_data(menu as usize) }

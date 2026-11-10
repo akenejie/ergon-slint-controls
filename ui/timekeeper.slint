@@ -58,18 +58,24 @@ export component TimeKeeperWindow inherits Window {
 	in property <string> start-title: root.running ? "停止 (&P)" : "開始 (&B)";
 	in property <string> break-title: "休憩の合図 (&R):";
 
-	// メニュー バーをライブラリへ登録 (キー操作の判定は
-	// menu::handle_menu_key、項目の発火は activate ハンドラ)。
-	init => {
+	// メニュー バー / ラベル / ボタンのアクセスキーをライブラリへ登録
+	// (キー操作の判定は menu::handle_menu_key、項目の発火は activate /
+	// action ハンドラ)。登録はスナップショットなので、項目モデルが差し替わ
+	// る (enabled の依存が変わる) たびに register-keys で再登録する。
+	function register-keys() {
 		MenuKeyControl.menus = [
 			{ title: root.file-menu-title, items: root.file-items },
 			{ title: root.task-menu-title, items: root.task-items },
 			{ title: root.help-menu-title, items: root.help-items },
 		];
-		// ラベル / ボタンのアクセスキー (キー検出と消費判断はライブラリ)。
 		MenuKeyControl.label-keys = [ MenuAccessKey.parse(root.break-title).key ];
 		MenuKeyControl.action-keys = [ MenuAccessKey.parse(root.start-title).key ];
 	}
+	init => { root.register-keys(); }
+	changed file-items => { root.register-keys(); }
+	changed task-items => { root.register-keys(); }
+	changed help-items => { root.register-keys(); }
+	changed running => { root.register-keys(); }
 
 	// ---- アプリの状態 ----
 	in-out property <bool> running: false;
