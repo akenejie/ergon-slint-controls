@@ -183,29 +183,37 @@ where
 	let menu_row = |menu: i32| -> Option<MenuBarMenu> {
 		if menu < 0 { None } else { menus.row_data(menu as usize) }
 	};
+	let alt_held = ui.global::<MenuAccessKey>().get_alt_held();
+	// 押下中かつ非リピートの文字 (なければ None)。離し / リピートではメニ
+	// ューの文字照合を行わない (Alt の離しでの下線解除は上で処理済み)。
+	let pressed = if !key_event.repeat && key_event.state == ElementState::Pressed {
+		pressed_char(key_event).map(|c| c.to_ascii_uppercase())
+	} else {
+		None
+	};
 
-	// Alt+文字: バー項目のアクセスキーでメニューを開閉。
-	if !key_event.repeat && ui.global::<MenuAccessKey>().get_alt_held() {
-		if let Some(pressed) = pressed_char(key_event).map(|c| c.to_ascii_uppercase()) {
+	// Alt+文字: バー項目のアクセスキーでメニューを開く (**閉じている間**)。
+	// 開いている間は下の「メニュー開閉中」処理へ進む (Esc / 矢印 / Enter を
+	// 含む)。以前はこの分岐が Alt 押下中の全キーを早期 return していたた
+	// め、Alt+F で開いた直後 (Alt を押したままの Esc) に Esc が効かなかっ
+	// た (実測)。
+	if alt_held && open < 0 {
+		if let Some(pressed) = pressed {
 			let want = (0..menus.row_count() as i32).find(|&i| {
 				menus.row_data(i as usize).map_or(false, |m| {
 					access_key_char(&m.title) == Some(pressed)
 				})
 			});
 			if let Some(want) = want {
-				if open == want {
-					hub.invoke_close();
-				} else {
-					hub.set_open(want);
-					if let Some(m) = menu_row(want) {
-						hub.set_selected_row(first_enabled_row(&m.items));
-					}
+				hub.set_open(want);
+				if let Some(m) = menu_row(want) {
+					hub.set_selected_row(first_enabled_row(&m.items));
 				}
 				return true;
 			}
 		}
-		// Alt+文字がバー項目に一致しない場合は消費しない (アプリの処理を続
-		// ける。アプリ固有のショートカットが Alt 組み合わせを持つため)。
+		// バー項目に一致しない場合は消費しない (アプリ固有の Alt ショート
+		// カットを優先する)。
 		return false;
 	}
 
@@ -213,24 +221,38 @@ where
 		return false;
 	}
 
-	// --- メニュー開閉中 ---
+	// --- メニュー開閉中 (Alt の有無にかかわらず) ---
 
-	// 文字: 項目のアクセスキー発火。
-	if !key_event.repeat {
-		if let Some(pressed) = pressed_char(key_event).map(|c| c.to_ascii_uppercase()) {
-			if let Some(m) = menu_row(open) {
-				let row = (0..m.items.row_count()).find(|&i| {
-					m.items.row_data(i).map_or(false, |v| {
-						v.entry.enabled
-							&& !v.entry.is_separator
-							&& access_key_char(&v.entry.title) == Some(pressed)
+	// 文字: 項目のアクセスキー発火。一致しなければバー項目を照合する
+	// (Alt+文字でのメニュー切替)。
+	if let Some(pressed) = pressed {
+		if let Some(m) = menu_row(open) {
+			let row = (0..m.items.row_count()).find(|&i| {
+				m.items.row_data(i).map_or(false, |v| {
+					v.entry.enabled
+						&& !v.entry.is_separator
+						&& access_key_char(&v.entry.title) == Some(pressed)
+				})
+			});
+			if let Some(row) = row {
+				registry.invoke_activate(open, row as i32);
+				hub.invoke_close();
+				return true;
+			}
+		}
+		if alt_held {
+			let want = (0..menus.row_count() as i32).find(|&i| {
+				i != open
+					&& menus.row_data(i as usize).map_or(false, |m| {
+						access_key_char(&m.title) == Some(pressed)
 					})
-				});
-				if let Some(row) = row {
-					registry.invoke_activate(open, row as i32);
-					hub.invoke_close();
-					return true;
+			});
+			if let Some(want) = want {
+				hub.set_open(want);
+				if let Some(m) = menu_row(want) {
+					hub.set_selected_row(first_enabled_row(&m.items));
 				}
+				return true;
 			}
 		}
 	}

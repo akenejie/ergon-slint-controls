@@ -25,7 +25,7 @@
 // クレート内にあるため同じコンパイル単位で直接 import しているが、API の形は
 // 同じ (README の「参照方法の要点」を参照)。
 
-use ergon_slint_controls::menu::access_key_char;
+use ergon_slint_controls::menu::{access_key_char, pressed_char};
 use ergon_slint_controls::{AccessKeyHub, MenuKeyControl, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
 use ergon_slint_controls::modal_dialog::{ModalMode, OverlayHost as _};
 
