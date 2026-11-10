@@ -1,6 +1,6 @@
 [package]
 name = "ergon-slint-controls"
-version = "0.11.6"
+version = "0.12.0"
 edition = "2021"
 links = "ergon-slint-controls"
 
@@ -28,6 +28,10 @@ slint = { version = "1.17", features = ["std", "backend-winit", "renderer-femtov
 # modal-dialog feature: 子ダイアログ生成時の OS 属性フック
 # (window_attributes_hook) を仕込むための winit バックエンド。
 i-slint-backend-winit = { version = "1.17.1", features = ["renderer-femtovg"], optional = true }
+# ui_font モジュール: OS 標準 UI フォントを各ウィンドウの WindowItem (slint
+# core の公開型) へ流し込むための core 直参照 (全 OS)。slint 本体と同じバー
+# ジョンに統一される (=1.17.1)。
+i-slint-core = "1.17.1"
 
 [target.'cfg(windows)'.dependencies]
 # dialogs::prompt_folder の IFileOpenDialog は windows クレートの
@@ -47,10 +51,6 @@ windows-sys = { version = "0.61", features = [
 ] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-# ui_font モジュール: デスクトップ環境の UI フォントを各ウィンドウの
-# WindowItem (slint core の公開型) へ流し込むための core 直参照。
-# slint 本体と同じバージョンに統一される (=1.17.1)。
-i-slint-core = "1.17.1"
 # cursor::set_custom_cursor は X11 の Render 拡張で ARGB32 のカスタムカーソルを
 # 積む。gtk モジュール / dialogs は x11rb を使い、ダイアログを X 窓レベルで
 # WM_TRANSIENT_FOR 設定して親ウィンドウ基準のモーダル配置にする。winit 0.30 は

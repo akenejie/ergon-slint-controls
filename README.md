@@ -181,18 +181,33 @@ Linux ではその時点で GTK テーマから取得した色 (Chromium ui/gtk 
 場合は下線を外してその 2px は背景色)。色を変えたい場合は `MenuBarTheme`
 のプロパティを後から上書きできる。
 
-**UI フォント** (Linux): アプリ側の設定は不要。`platform::setup_window` を
-呼ぶと、Linux ではデスクトップ環境の UI フォント設定 (GTK の
-`gtk-font-name` — GNOME なら `org.gnome.desktop.interface font-name` と同
-じもの) を実行時に読み、表示される各ウィンドウの既定フォントへ適用する
-(ファミリ名のハードコードは無し。デスクトップ環境でフォントを変えれば追
-従)。slint の既定 (fontconfig の `sans-serif` 汎用別名) はデスクトップ環境
-の UI フォントとは別物で、周囲の GTK アプリと書体がズレるため。
+**UI フォント** (オプトイン): 使うときは `ui_font::apply_os_default()` を 1
+回呼ぶだけ (OS 分岐不要)。呼ばないときはこの機能は最終バイナリに含まれな
+い (リンカのデッドコード除去)。呼ぶと、表示される各ウィンドウの既定フォン
+トを OS 標準へ揃える:
+
+- **Windows**: Yu Gothic UI。slint の既定は Segoe UI へ落ちるが、Segoe UI
+  は和文を持たず和文だけ別書体へフォールバックするため、欧文と和文で書体
+  が混在する。Yu Gothic UI は和欧両対応 (Windows 10/11 の日本語 UI の標準
+  書体)。
+- **Linux**: デスクトップ環境の UI フォント設定 (GTK の `gtk-font-name` —
+  GNOME なら `org.gnome.desktop.interface font-name` と同じもの) を実行時
+  に読んで適用する (ファミリ名のハードコードは無し。デスクトップ環境でフ
+  ォントを変えれば追従)。slint の既定 (fontconfig の `sans-serif` 汎用別
+  名) はデスクトップ環境の UI フォントとは別物で、周囲の GTK アプリと書体
+  がズレるため。
+- **macOS など**: 何もしない (システム既定のまま)。
+
+アプリが自前のファミリを明示したい場合は、`default-font-family` の参照先
+プロパティへ空でない値を入れる (ライブラリは空のときだけ OS 標準へ揃え
+る)。
 
 この機能は、ウィンドウの .slint が `default-font-family` を**動的バインディ
 ング**で宣言している場合にのみ働く (未宣言やリテラル固定だとコンパイラが
 プロパティを定数化し、実行時の差し替えが不可能になるため。ライブラリは定
 数化されたウィンドウを検出して何もしない — panic もしないが機能も無効)。
+`setup_window` や `apply_os_default()` の呼び出しタイミングでは初期化が済
+んでいるため、表示時点でこの値が反映される。
 
 ```slint
 // ウィンドウ コンポーネントに追加する (timekeeper.slint と同じ形)。

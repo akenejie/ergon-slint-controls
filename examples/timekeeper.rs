@@ -776,6 +776,9 @@ fn main() -> Result<(), slint::PlatformError> {
 		&ui,
 		ergon_slint_controls::platform::TitlebarTheme::Light,
 	);
+	// 各ウィンドウの既定フォントを OS 標準の UI フォントへ揃える (Windows:
+	// Yu Gothic UI / Linux: デスクトップ環境の設定 / macOS: 既定のまま)。
+	ergon_slint_controls::ui_font::apply_os_default();
 
 	ui.run()
 }

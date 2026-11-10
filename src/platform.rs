@@ -64,11 +64,9 @@ pub fn setup_window<P: slint::ComponentHandle + 'static>(
 	// Windows / macOS では何もしない (既定色のまま)。
 	#[cfg(target_os = "linux")]
 	crate::menu_bar_theme::apply_computed();
-	// UI フォント (Linux はデスクトップ環境の設定に追従)。表示される各
-	// ウィンドウの既定フォントを gtk-font-name から差し込む shown フックを
-	// 仕込む (詳細は ui_font モジュール)。Windows / macOS では何もしない。
-	#[cfg(target_os = "linux")]
-	crate::ui_font::install_window_font_hook();
+	// (UI フォントはオプトイン: ui_font::apply_os_default() をアプリが呼ん
+	// だときだけ、shown フックで各ウィンドウの既定フォントを OS 標準へ揃え
+	// る。呼ばないときは機能ごと最終バイナリから外れる。)
 	use slint::winit_030::winit::window::Theme;
 	use slint::winit_030::WinitWindowAccessor;
 	use std::sync::atomic::Ordering::Relaxed;

@@ -19,8 +19,7 @@ pub mod modal_dialog;
 #[cfg(windows)]
 mod owner;
 pub mod platform;
-#[cfg(target_os = "linux")]
-mod ui_font;
+pub mod ui_font;
 
 // 生成コードをルートに置かず `generated` モジュールへ格納する。下の
 // ergon_slint_controlsSharedGlobals ラッパーが本物の SharedGlobals を差し
