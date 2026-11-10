@@ -290,8 +290,8 @@ mod win {
 	use windows_sys::Win32::UI::WindowsAndMessaging::{
 		CallWindowProcW, CreateIconIndirect, DestroyIcon, GetWindowLongPtrW, GWLP_WNDPROC, HCURSOR,
 		HTCLIENT, ICONINFO, IDC_ARROW, IDC_CROSS, LoadCursorFromFileW, LoadCursorW, SetCursor,
-		SetWindowLongPtrW, WM_NCLBUTTONDOWN, WM_NCMBUTTONDOWN, WM_NCRBUTTONDOWN, WM_SETCURSOR,
-		WNDPROC,
+		SetWindowLongPtrW, WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_NCLBUTTONDOWN, WM_NCMBUTTONDOWN,
+		WM_NCRBUTTONDOWN, WM_RBUTTONDOWN, WM_SETCURSOR, WNDPROC,
 	};
 
 	#[derive(Clone, Copy, PartialEq, Eq)]
@@ -322,10 +322,18 @@ mod win {
 		wparam: WPARAM,
 		lparam: LPARAM,
 	) -> LRESULT {
-		// タイトルバーなどクライアント外のクリックを呼び出し側へ通知する
-		// (take_non_client_click で消費)。
+		// タイトルバーなどクライアント外の押下: 開いているメニューを閉じる
+		// (メニュー機構の責任)。NON_CLIENT_CLICK フラグは take 用に残す。
 		if msg == WM_NCLBUTTONDOWN || msg == WM_NCRBUTTONDOWN || msg == WM_NCMBUTTONDOWN {
 			NON_CLIENT_CLICK.store(true, std::sync::atomic::Ordering::Relaxed);
+			crate::menu::close_all_open_menus();
+		}
+		// クライアント領域の押下: 残っている非クライアント フラグを消す (非
+		// クライアント押下は slint の MouseInput として届かないため、この消
+		// 去がないと次のクライアント クリックが誤って握り潰される — 実測:
+		// じかん君でメニューバーが時々反応しない)。
+		if msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN {
+			NON_CLIENT_CLICK.store(false, std::sync::atomic::Ordering::Relaxed);
 		}
 		if msg == WM_SETCURSOR && (lparam as u32 & 0xFFFF) == HTCLIENT {
 			if let Some(h) = OVERRIDE_CURSOR.with(|c| *c.borrow()) {

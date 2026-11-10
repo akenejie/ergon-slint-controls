@@ -503,14 +503,9 @@ fn main() -> Result<(), slint::PlatformError> {
 			return EventResult::PreventDefault;
 		}
 
-		// Windows: 非クライアント領域のクリックを拾ったら握り潰す。
-		#[cfg(windows)]
-		if let winit::event::WindowEvent::MouseInput { .. } = event {
-			if ergon_slint_controls::cursor::take_non_client_click() {
-				return EventResult::PreventDefault;
-			}
-		}
-
+		// (非クライアント領域 = タイトルバーなどの押下は、ライブラリの
+		// wndproc がメニューを閉じる。フラグの取りこぼしもライブラリ側で
+		// クライアント押下時に自動消去されるため、アプリ側の処理は不要。)
 		// ウィンドウの外がクリックされた (非活性になった) ときもメニューを閉じる。
 		if let winit::event::WindowEvent::Focused(false) = event {
 			if let Some(ui) = weak.upgrade() {

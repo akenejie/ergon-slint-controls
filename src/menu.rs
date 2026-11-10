@@ -18,6 +18,8 @@
 //! - 末尾の孤立した `&` → リテラルの `&`
 //! - `&` が無ければアクセスキーなし
 
+use slint::private_unstable_api::re_exports as sp;
+use crate::generated;
 use crate::{AccessKeyHub, MenuAccessKey, MenuBarMenu, MenuKeyControl, MenuItemView, MenuOpenHub};
 
 /// `before + key + after` は marker を除いた元のタイトルに一致する。
@@ -341,6 +343,47 @@ fn first_enabled_row(items: &slint::ModelRc<MenuItemView>) -> i32 {
 				.map_or(false, |v| v.entry.enabled && !v.entry.is_separator)
 		})
 		.map_or(-1, |i| i as i32)
+}
+
+// --- 開いているメニューのレジストリ (非クライアント クリックで閉じる用) ---
+//
+// タイトルバーなど非クライアント領域のクリックは MenuDismissLayer に届かな
+// い (ウィンドウの内容領域の外のため)。メニューを開いたままタイトルバーを
+// 操作できてしまうのはメニュー機構の意味論として誤りなので、ライブラリが
+// 閉じる。アプリ側に「非クライアント クリックでメニューを閉じる」コードを
+// 書かせない (書き忘れると開いたままになる — 実測)。
+
+type RootWeak = sp::VWeak<sp::ItemTreeVTable>;
+type OpenHubGlobal = core::pin::Pin<std::rc::Rc<generated::InnerMenuOpenHub>>;
+
+thread_local! {
+	static OPEN_HUBS: core::cell::RefCell<Vec<(RootWeak, OpenHubGlobal)>> =
+		const { core::cell::RefCell::new(Vec::new()) };
+}
+
+/// アプリの生成コードがルートを作ったときに SharedGlobals ラッパーから呼ば
+/// れる。MenuOpenHub の実体を登録する (非クライアント クリックでの全閉じ用)。
+pub(crate) fn register_open_hub(root: RootWeak, hub: OpenHubGlobal) {
+	OPEN_HUBS.with(|list| {
+		let mut list = list.borrow_mut();
+		list.retain(|(root, _)| root.upgrade().is_some());
+		list.push((root, hub));
+	});
+}
+
+/// 非クライアント領域 (タイトルバーなど) が押された。登録済みの全ウィンド
+/// ウの開いているメニューを閉じる。他のウィンドウのメニューは非活性化経路
+/// (Focused(false)) でも閉じるため、ここで余分に閉じても見た目は変わらな
+/// い。wndproc から呼ぶ (UI スレッド)。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn close_all_open_menus() {
+	OPEN_HUBS.with(|list| {
+		let mut list = list.borrow_mut();
+		list.retain(|(root, _)| root.upgrade().is_some());
+		for (_, hub) in list.iter() {
+			generated::MenuOpenHub(hub.clone(), core::marker::PhantomData).invoke_close();
+		}
+	});
 }
 
 /// アプリ共通のショートカット (元に戻す / やり直し / 終了) の判定。

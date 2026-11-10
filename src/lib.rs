@@ -83,6 +83,10 @@ impl ergon_slint_controlsSharedGlobals {
 		let inner =
 			generated::ergon_slint_controlsSharedGlobals::new(root_item_tree_weak.clone());
 		menu_bar_theme::register(root_item_tree_weak.clone(), inner.global_MenuBarTheme.clone());
+		crate::menu::register_open_hub(
+			root_item_tree_weak.clone(),
+			inner.global_MenuOpenHub.clone(),
+		);
 		wire_tooltip_placement(root_item_tree_weak, &inner.global_TooltipHub);
 		sp::Rc::new(Self {
 			global_AccessKeyHub: inner.global_AccessKeyHub.clone(),
