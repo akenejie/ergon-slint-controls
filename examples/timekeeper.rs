@@ -380,10 +380,31 @@ fn main() -> Result<(), slint::PlatformError> {
 			match id.as_str() {
 				"--start" | "--stop" => start_stop(),
 				"--clear" => {
-					while sessions.row_count() > 0 {
-						sessions.remove(0);
-					}
-					ui.set_hint_text("一覧を空にしました。".into());
+					// 破壊的な操作: カスタム ボタンのメッセージ ボックスで確認
+					// する (message_box_custom: 押されたボタンの choices 添字が
+					// 返る)。メニューを閉じた描画を先に済ませるため defer する。
+					let weak = weak.clone();
+					let sessions = sessions.clone();
+					ergon_slint_controls::menu::defer_action(&ui, move || {
+						let Some(ui) = weak.upgrade() else { return };
+						if sessions.row_count() == 0 {
+							return;
+						}
+						match ergon_slint_controls::dialogs::message_box_custom(
+							"一覧をクリア",
+							"今日のセッション一覧を削除しますか?",
+							&["削除する (&D)", "キャンセル"],
+							Some(1),   // 既定 (Enter) はキャンセル
+						) {
+							Some(0) => {
+								while sessions.row_count() > 0 {
+									sessions.remove(0);
+								}
+								ui.set_hint_text("一覧を空にしました。".into());
+							}
+							_ => {}
+						}
+					});
 				}
 				// ネイティブ ダイアログを出す処理: メニューを閉じた描画を
 				// 先に済ませてから実行する。
