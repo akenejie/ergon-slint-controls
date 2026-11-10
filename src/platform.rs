@@ -135,8 +135,7 @@ pub(crate) fn place_tooltip_axis(cursor: f32, size: f32, limit: f32) -> f32 {
 // Windows behaviour). Without an owner HWND the box degrades to modeless
 // behaviour and the parent stays selectable.
 #[cfg(windows)]
-pub fn main_window_hwnd(ui: &slint::Window) -> windows_sys::Win32::Foundation::HWND {
-	use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+pub fn main_window_hwnd(ui: &slint::Window) -> windows_sys::Win32::Foundation::HWND {	use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 	use slint::winit_030::WinitWindowAccessor;
 	ui.with_winit_window(|w| match w.window_handle() {
 		Ok(h) => match h.as_raw() {
@@ -213,6 +212,62 @@ pub fn os_modifier_keys() -> (bool, bool) {
 #[cfg(not(windows))]
 pub fn os_modifier_keys() -> (bool, bool) {
 	(false, false)
+}
+
+/// アプリ アイコンの供給。アプリは手持ちの情報だけを入れる (OS 分岐は
+/// [`apply_app_icon`](platform::apply_app_icon) が担う)。
+#[derive(Default)]
+pub struct AppIcon {
+	/// Windows: 実行ファイルに埋め込んだアイコン リソースの ID
+	/// (build.rs の `1 ICON "icon.ico"` の 1)。
+	pub windows_resource_id: Option<usize>,
+	/// Linux / macOS: アイコン画像 (幅 × 高さの RGBA ピクセル、行優先)。
+	/// 用意できない (画像が無い / デコードに失敗した) 場合は None でよく、
+	/// その OS では既定アイコンのままになる。
+	pub image: Option<(Vec<u8>, u32, u32)>,
+}
+
+/// アプリ アイコンを OS ごとの正しい方法で適用する。アプリはアイコンを用意
+/// して起動時に 1 回呼ぶだけ (OS 分岐なし)。
+///
+/// - **Windows**: 実行ファイルに埋め込んだリソースをタイトルバー / タスク
+///   バーへ設定する (install_window_icon)。
+/// - **Linux / macOS**: RGBA 画像を winit ウィンドウへ設定する。
+///
+/// winit ウィンドウの生成を待つ必要があるため、内部で非同期タスクを起こす
+/// (呼び出しは即座に返る)。アイコンが用意できていない側の OS では何もしな
+/// い (エラーにはならない。じかん君のようにアイコンを定義していないアプリ
+/// もそのまま呼んでよい)。
+///
+/// ```ignore
+/// platform::apply_app_icon(&ui, AppIcon {
+///     windows_resource_id: Some(1),
+///     image: load_icon_rgba(),   // 失敗したら None
+/// });
+/// ```
+pub fn apply_app_icon<C: slint::ComponentHandle + 'static>(ui: &C, icon: AppIcon) {
+	let weak = ui.as_weak();
+	let _ = slint::spawn_local(async move {
+		use slint::winit_030::WinitWindowAccessor;
+		let Some(ui) = weak.upgrade() else { return };
+		let Ok(winit_window) = ui.window().winit_window().await else { return };
+		#[cfg(windows)]
+		if let Some(id) = icon.windows_resource_id {
+			let hwnd = main_window_hwnd(&ui.window());
+			if !hwnd.is_null() {
+				install_window_icon(hwnd, id);
+			}
+		}
+		#[cfg(not(windows))]
+		if let Some((rgba, width, height)) = icon.image {
+			if let Ok(winit_icon) = slint::winit_030::winit::window::Icon::from_rgba(
+				rgba, width, height,
+			) {
+				winit_window.set_window_icon(Some(winit_icon));
+			}
+		}
+		let _ = winit_window; // Windows では未使用になるのを防ぐ
+	});
 }
 
 /// 当プロセスのトップレベルウィンドウ (自 pid) を列挙する (X11)。

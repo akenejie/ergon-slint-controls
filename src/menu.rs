@@ -1,26 +1,24 @@
-//! メニューのアクセスキー ("&X" 記法) のパース。
+//! メニュー バーの構造登録とキー操作の判定。
+//!
+//! アプリは `MenuKeyControl` グローバル (ui/menu.slint) へバー項目の並び
+//! (title は "&X" 記法) と項目モデルを束ね、`activate` ハンドラに「項目が押
+//! されたときの処理」を登録する。キーボード操作の判定は
+//! [`handle_menu_key`](menu::handle_menu_key) が担う。アプリ側は項目と処理
+//! だけを持ち、キー判定 / Alt 押下管理のコードは持たない。
 //!
 //! slint の文字列関数には走査手段 (split / index / slice) がないため、
 //! タイトルの "&" 記法の分解はここ (Rust) が担う。描画側は
 //! `MenuAccessKey.parse` グローバル純粋コールバック (ui/menu-base.slint) 経由
-//! でこの結果を使う。ハンドラの差し込み:
-//!
-//! ```ignore
-//! ui.global::<MenuAccessKey>().on_parse(|title| {
-//!     let p = ergon_slint_controls::menu::parse_access_key(&title);
-//!     AccessKeyParts {
-//!         before: p.before.into(),
-//!         key: p.key.into(),
-//!         after: p.after.into(),
-//!     }
-//! });
-//! ```
+//! でこの結果を使う。ハンドラはライブラリが SharedGlobals の初期化で差し込
+//! むため、アプリ側の配線は不要。
 //!
 //! 記法は Win32 標準に合わせる:
 //! - `&X` → `X` をアクセスキーとして扱う (Alt 押下中は下線)
 //! - `&&` → リテラルの `&`
 //! - 末尾の孤立した `&` → リテラルの `&`
 //! - `&` が無ければアクセスキーなし
+
+use crate::{MenuAccessKey, MenuBarMenu, MenuKeyControl, MenuItemView, MenuOpenHub};
 
 /// `before + key + after` は marker を除いた元のタイトルに一致する。
 /// `key` が空ならアクセスキーなし。
@@ -117,6 +115,199 @@ pub fn defer_action<P: slint::ComponentHandle>(
 ) {
 	ui.window().request_redraw();
 	slint::Timer::single_shot(std::time::Duration::from_millis(50), action);
+}
+
+/// メニュー バーのキー操作の判定。アプリの winit イベント フックで
+/// KeyboardInput を受けたら**押下 / 離しの両方**をこれへ渡す。
+///
+/// 戻り値 `true` = メニューが拾った (アプリは処理しない)。
+/// `false` = アプリ側の処理を続ける。
+///
+/// 動作 (Win32 のメニュー バーに合わせる):
+/// - **Alt 単体の押下 / 離し**: バーのアクセスキー下線を出すだけ。消費はし
+///   ない (false — アプリの処理は続く)。下線状態は `MenuAccessKey.alt-held`
+///   が持ち、バー項目はこれに束ねる。
+/// - **Alt+文字** (バー項目のタイトルの &X に一致): メニューを開閉し、開いた
+///   ときは最初の有効行を選択する。消費する (true)。
+/// - **メニュー開閉中**: 文字 (項目の &X に一致) → activate 発火 / Up / Down
+///   → 有効行のみの選択移動 (端は折り返す) / Left / Right → メニュー切替 /
+///   Enter / Space → 選択行を activate / Esc → 閉じる。いずれも消費する。
+/// - それ以外: 消費しない (false)。
+///
+/// メニューが開いているときの非活性 (Focused(false)) 経路では、アプリが
+/// `MenuOpenHub.close()` を呼ぶ (alt-held も一緒に落ちる)。
+///
+/// ```ignore
+/// ui.window().on_winit_window_event(move |_win, event| -> EventResult {
+///     if let winit::event::WindowEvent::KeyboardInput { event, .. } = event {
+///         if ergon_slint_controls::menu::handle_menu_key(&ui, event) {
+///             return EventResult::PreventDefault;
+///         }
+///         // ... アプリのキー処理 ...
+///     }
+///     EventResult::Propagate
+/// });
+/// ```
+pub fn handle_menu_key<'a, C: slint::ComponentHandle>(
+	ui: &'a C,
+	key_event: &slint::winit_030::winit::event::KeyEvent,
+) -> bool
+where
+	MenuKeyControl<'a>: slint::Global<'a, C>,
+	MenuAccessKey<'a>: slint::Global<'a, C>,
+	MenuOpenHub<'a>: slint::Global<'a, C>,
+{
+	use slint::Model as _;
+	use slint::winit_030::winit::event::ElementState;
+	use slint::winit_030::winit::keyboard::{KeyCode, PhysicalKey};
+
+	let code = match key_event.physical_key {
+		PhysicalKey::Code(c) => c,
+		_ => return false,
+	};
+
+	// Alt 単体の押下 / 離し: 下線を出すだけ (消費しない)。
+	if matches!(code, KeyCode::AltLeft | KeyCode::AltRight) {
+		let held = key_event.state == ElementState::Pressed;
+		ui.global::<MenuAccessKey>().set_alt_held(held);
+		return false;
+	}
+	if key_event.state != ElementState::Pressed {
+		return false;
+	}
+
+	let registry = ui.global::<MenuKeyControl>();
+	let hub = ui.global::<MenuOpenHub>();
+	let open = hub.get_open();
+	let menus = registry.get_menus();
+	let menu_row = |menu: i32| -> Option<MenuBarMenu> {
+		if menu < 0 { None } else { menus.row_data(menu as usize) }
+	};
+
+	// Alt+文字: バー項目のアクセスキーでメニューを開閉。
+	if !key_event.repeat && ui.global::<MenuAccessKey>().get_alt_held() {
+		if let Some(pressed) = pressed_char(key_event).map(|c| c.to_ascii_uppercase()) {
+			let want = (0..menus.row_count() as i32).find(|&i| {
+				menus.row_data(i as usize).map_or(false, |m| {
+					access_key_char(&m.title) == Some(pressed)
+				})
+			});
+			if let Some(want) = want {
+				if open == want {
+					hub.invoke_close();
+				} else {
+					hub.set_open(want);
+					if let Some(m) = menu_row(want) {
+						hub.set_selected_row(first_enabled_row(&m.items));
+					}
+				}
+				return true;
+			}
+		}
+		// Alt+文字がバー項目に一致しない場合は消費しない (アプリの処理を続
+		// ける。アプリ固有のショートカットが Alt 組み合わせを持つため)。
+		return false;
+	}
+
+	if open < 0 {
+		return false;
+	}
+
+	// --- メニュー開閉中 ---
+
+	// 文字: 項目のアクセスキー発火。
+	if !key_event.repeat {
+		if let Some(pressed) = pressed_char(key_event).map(|c| c.to_ascii_uppercase()) {
+			if let Some(m) = menu_row(open) {
+				let row = (0..m.items.row_count()).find(|&i| {
+					m.items.row_data(i).map_or(false, |v| {
+						v.entry.enabled
+							&& !v.entry.is_separator
+							&& access_key_char(&v.entry.title) == Some(pressed)
+					})
+				});
+				if let Some(row) = row {
+					registry.invoke_activate(open, row as i32);
+					hub.invoke_close();
+					return true;
+				}
+			}
+		}
+	}
+
+	// Up / Down: 有効行のみの選択移動 (端は折り返す)。
+	if matches!(code, KeyCode::ArrowUp | KeyCode::ArrowDown) {
+		if let Some(m) = menu_row(open) {
+			let step: i32 = if matches!(code, KeyCode::ArrowDown) { 1 } else { -1 };
+			let mut row = hub.get_selected_row();
+			let count = m.items.row_count() as i32;
+			// 未選択からの移動は端から始める (Down なら先頭の有効行、Up なら
+			// 末尾の有効行)。
+			for _ in 0..count {
+				row = if row < 0 {
+					if step > 0 { 0 } else { count - 1 }
+				} else {
+					(row + step).rem_euclid(count)
+				};
+				let enabled = m
+					.items
+					.row_data(row as usize)
+					.map_or(false, |v| v.entry.enabled && !v.entry.is_separator);
+				if enabled {
+					hub.set_selected_row(row);
+					return true;
+				}
+			}
+			return true;
+		}
+	}
+
+	// Left / Right: メニュー切替 (最初の有効行を選択)。
+	if matches!(code, KeyCode::ArrowLeft | KeyCode::ArrowRight) {
+		let count = menus.row_count() as i32;
+		if count > 0 {
+			let next = if matches!(code, KeyCode::ArrowRight) {
+				(open + 1).rem_euclid(count)
+			} else {
+				(open + count - 1).rem_euclid(count)
+			};
+			hub.set_open(next);
+			if let Some(m) = menu_row(next) {
+				hub.set_selected_row(first_enabled_row(&m.items));
+			}
+		}
+		return true;
+	}
+
+	// Enter / Space: 選択行を activate。
+	if matches!(code, KeyCode::Enter | KeyCode::Space) {
+		let row = hub.get_selected_row();
+		if row >= 0 {
+			registry.invoke_activate(open, row);
+		}
+		hub.invoke_close();
+		return true;
+	}
+
+	// Esc: 閉じる。
+	if matches!(code, KeyCode::Escape) {
+		hub.invoke_close();
+		return true;
+	}
+
+	false
+}
+
+/// モデル内の最初の有効行 (区切り / 無効行を読み飛ばす)。無ければ -1。
+fn first_enabled_row(items: &slint::ModelRc<MenuItemView>) -> i32 {
+	use slint::Model as _;
+	(0..items.row_count())
+		.find(|&i| {
+			items
+				.row_data(i)
+				.map_or(false, |v| v.entry.enabled && !v.entry.is_separator)
+		})
+		.map_or(-1, |i| i as i32)
 }
 
 #[cfg(test)]

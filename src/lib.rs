@@ -70,6 +70,7 @@ pub struct ergon_slint_controlsSharedGlobals {
 	pub global_MenuAccessKey: core::pin::Pin<std::rc::Rc<generated::InnerMenuAccessKey>>,
 	pub global_MenuHintHub: core::pin::Pin<std::rc::Rc<generated::InnerMenuHintHub>>,
 	pub global_MenuOpenHub: core::pin::Pin<std::rc::Rc<generated::InnerMenuOpenHub>>,
+	pub global_MenuKeyControl: core::pin::Pin<std::rc::Rc<generated::InnerMenuKeyControl>>,
 	pub global_MenuBarTheme: core::pin::Pin<std::rc::Rc<generated::InnerMenuBarTheme>>,
 	pub global_TooltipHub: core::pin::Pin<std::rc::Rc<generated::InnerTooltipHub>>,
 	inner: sp::Rc<generated::ergon_slint_controlsSharedGlobals>,
@@ -89,6 +90,7 @@ impl ergon_slint_controlsSharedGlobals {
 			global_MenuAccessKey: inner.global_MenuAccessKey.clone(),
 			global_MenuHintHub: inner.global_MenuHintHub.clone(),
 			global_MenuOpenHub: inner.global_MenuOpenHub.clone(),
+			global_MenuKeyControl: inner.global_MenuKeyControl.clone(),
 			global_MenuBarTheme: inner.global_MenuBarTheme.clone(),
 			global_TooltipHub: inner.global_TooltipHub.clone(),
 			inner,
@@ -106,6 +108,22 @@ impl ergon_slint_controlsSharedGlobals {
 	/// れる (実測。このバグが「ツールチップが一切出ない」の原因だった)。
 	pub fn init_globals(self: &sp::Rc<Self>) {
 		self.inner.init_globals();
+		// メニューの "&X" 記法パースをライブラリ実装へ差し込む (記法の解釈は
+		// menu::parse_access_key。アプリ側の配線は不要)。公開型
+		// (generated::MenuAccessKey) は Inner のラッパ (タプル構造体) なので
+		// ここで組み立ててハンドラを設定する。
+		generated::MenuAccessKey(
+			self.global_MenuAccessKey.clone(),
+			core::marker::PhantomData,
+		)
+		.on_parse(|title| {
+			let p = crate::menu::parse_access_key(&title);
+			generated::AccessKeyParts {
+				before: p.before.into(),
+				key: p.key.into(),
+				after: p.after.into(),
+			}
+		});
 		self.global_TooltipHub.active.set(true);
 		self.global_TooltipHub.debug_log.set(tooltip_debug_enabled());
 		menu_bar_theme::reapply_after_init(&self.global_MenuBarTheme);

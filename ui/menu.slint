@@ -10,7 +10,11 @@
 // Only the light color-scheme values are used here, matching the rest of the
 // application's fixed colors.
 
-import { MenuBarItemBase, MenuBarBase, MenuFrameBase, MenuItemBase, MenuHintHub, MenuOpenHub } from "menu-base.slint";
+import { MenuBarItemBase, MenuBarBase, MenuFrameBase, MenuItemBase, MenuHintHub, MenuOpenHub, MenuAccessKey } from "menu-base.slint";
+
+// メニュー バーの構造登録 (MenuBarMenu / MenuKeyControl) はファイル末尾
+// (MenuItemView の宣言の後) で定義する。slint は前方参照で型を解決しない
+// ため。
 
 // メニューバー / メニューのテーマ色。既定は Windows 10 標準風の固定値。
 // アプリが `@ergon_slint_controls` で部品を参照すると、このグローバルは
@@ -300,4 +304,27 @@ export component MenuHintPopup inherits Rectangle {
 			vertical-alignment: center;
 		}
 	}
+}
+
+// メニュー バーの構造登録。アプリはバー項目の並び (title は "&X" アクセスキー
+// 記法) と items (ドロップダウンへ渡すのと同じモデル) をこのグローバルへ束ね、
+// activate ハンドラに「項目が押されたときの処理」を登録する。UI 描画はライ
+// ブラリの部品 (FluentMenuBar*) が担い、キーボード操作の判定 (Alt+文字での
+// 開閉 / アクセスキー発火 / 上下左右 / Enter / Esc) はライブラリの
+// menu::handle_menu_key (Rust) がこの登録を読んで担う。アプリ側は項目と処理
+// だけを持ち、OS 分岐やキー判定のコードは持たない。
+export struct MenuBarMenu {
+	// バー項目のタイトル ("&X" 記法)。X が Alt+X のアクセスキー。
+	title: string,
+	// ドロップダウンへ渡すのと同じ項目モデル (MenuItemView)。
+	items: [MenuItemView],
+}
+
+export global MenuKeyControl {
+	// バー項目の並び (アプリが束ねる)。
+	in-out property <[MenuBarMenu]> menus: [];
+
+	// 項目がキー操作で発火された (アプリがハンドラを登録する)。
+	// menu = バー項目の index、row = 項目モデルの行 index。
+	callback activate(int, int);
 }

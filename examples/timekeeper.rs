@@ -25,8 +25,8 @@
 // クレート内にあるため同じコンパイル単位で直接 import しているが、API の形は
 // 同じ (README の「参照方法の要点」を参照)。
 
-use ergon_slint_controls::menu::{access_key_char, parse_access_key, pressed_char};
-use ergon_slint_controls::{AccessKeyHub, MenuAccessKey, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
+use ergon_slint_controls::menu::access_key_char;
+use ergon_slint_controls::{AccessKeyHub, MenuKeyControl, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
 use ergon_slint_controls::modal_dialog::{ModalMode, OverlayHost as _};
 
 /// このサンプルのモーダル表示方式。全 OS (win/linux/macos) 共に子ウィンドウ
@@ -36,18 +36,17 @@ const MODAL_MODE: ModalMode = ModalMode::ChildWindow;
 use slint::{winit_030::{winit, EventResult, WinitWindowAccessor}, ComponentHandle as _, Model as _};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 
 /// (メニュー index, 行 index) → コマンド。区切り行は None。
 /// .slint 側の file-actions / task-actions / help-actions と同じ表。
-fn menu_action(menu: i32, row: usize) -> Option<String> {
+fn menu_action(menu: i32, row: i32) -> Option<String> {
 	const FILE: [&str; 4] = ["--folder", "--csv", "", "--exit"];
 	const TASK: [&str; 4] = ["--start", "--stop", "", "--clear"];
 	const HELP: [&str; 2] = ["--help", "--about"];
 	match menu {
-		0 => FILE.get(row).filter(|s| !s.is_empty()).map(|s| s.to_string()),
-		1 => TASK.get(row).filter(|s| !s.is_empty()).map(|s| s.to_string()),
-		2 => HELP.get(row).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+		0 => FILE.get(row.max(0) as usize).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+		1 => TASK.get(row.max(0) as usize).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+		2 => HELP.get(row.max(0) as usize).filter(|s| !s.is_empty()).map(|s| s.to_string()),
 		_ => None,
 	}
 }
@@ -56,37 +55,6 @@ fn menu_action(menu: i32, row: usize) -> Option<String> {
 fn apply_menu_action(ui: &TimeKeeperWindow, action: &str) {
 	ui.global::<MenuOpenHub>().invoke_close();
 	ui.invoke_menu_item_clicked(action.into());
-}
-
-/// `from` の隣 (step = +1 で下 / -1 で上) から探索を始め、次の有効行
-/// (区切り / 無効行を読み飛ばす) を返す。端は折り返す。`from < 0` なら
-/// step > 0 なら先頭から、step < 0 なら末尾から探す。
-fn next_enabled_row(
-	items: &slint::ModelRc<ergon_slint_controls::MenuItemView>,
-	from: i32,
-	step: i32,
-) -> i32 {
-	let n = items.row_count() as i32;
-	if n == 0 {
-		return -1;
-	}
-	let mut i = if from < 0 {
-		if step > 0 { -1 } else { n }
-	} else {
-		from
-	};
-	for _ in 0..n {
-		i += step;
-		if i < 0 {
-			i = n - 1;   // 上端で折り返す
-		} else if i >= n {
-			i = 0;       // 下端で折り返す
-		}
-		if items.row_data(i as usize).map_or(false, |v| v.entry.enabled && !v.entry.is_separator) {
-			return i;
-		}
-	}
-	-1
 }
 
 /// 「書き出す」ダイアログのラッパ。modal_dialog の ModalChild トレイトを実装
@@ -179,18 +147,8 @@ fn main() -> Result<(), slint::PlatformError> {
 	ergon_slint_controls::modal_dialog::prepare_backend()?;
 	let ui = TimeKeeperWindow::new()?;
 
-	// `&` 記法のパースをライブラリ実装へ差し込む (必須)。記法の解釈 (Win32
-	// 標準: &X = アクセスキー, && = リテラルの &) は ergon_slint_controls::menu
-	// が担う。描画 (下線付きラベル) と Rust 側のキー発火が同じ関数を読むため
-	// 表示と動作が一致する。
-	ui.global::<MenuAccessKey>().on_parse(|title| {
-		let p = parse_access_key(&title);
-		ergon_slint_controls::AccessKeyParts {
-			before: p.before.into(),
-			key: p.key.into(),
-			after: p.after.into(),
-		}
-	});
+	// メニューの "&X" 記法パース (MenuAccessKey.parse) はライブラリが
+	// SharedGlobals の初期化で差し込むため、アプリ側の配線は不要。
 
 	// ---------- アプリの状態 ----------
 	// ログの保存先 (「ログの保存先フォルダ...」で設定)。
@@ -518,41 +476,27 @@ fn main() -> Result<(), slint::PlatformError> {
 	}
 
 	// ---------- キーボード処理 (winit イベント フック) ----------
+	// メニュー バーの構造をライブラリへ登録し、項目が押されたときの処理を
+	// 登録する。キー操作の判定 (Alt+文字での開閉 / アクセスキー発火 / 上下
+	// 左右 / Enter / Esc) はライブラリ (menu::handle_menu_key) が担う。
 	let weak = ui.as_weak();
-	let alt_state = AtomicBool::new(false);
-	ui.window().on_winit_window_event(move |_win, event| -> EventResult {
-		if let winit::event::WindowEvent::ModifiersChanged(mods) = event {
-			let mods = mods.state();
-			alt_state.store(mods.alt_key(), Relaxed);
-			// Alt 押下中はメニューのアクセスキーに下線を表示する。
-			if let Some(ui) = weak.upgrade() {
-				ui.set_menu_alt_held(mods.alt_key());
-			}
+	ui.global::<MenuKeyControl>().on_activate(move |menu, row| {
+		let Some(ui) = weak.upgrade() else { return };
+		if let Some(action) = menu_action(menu, row) {
+			let weak = ui.as_weak();
+			let _ = slint::invoke_from_event_loop(move || {
+				if let Some(ui) = weak.upgrade() {
+					apply_menu_action(&ui, &action);
+				}
+			});
 		}
-
-		// ネイティブ ダイアログが表示中 (または直後に閉じた) ときは、
-		// 親ウィンドウへ届いた入力をすべて握り潰す。
-		#[cfg(not(windows))]
-		if ergon_slint_controls::dialogs::dialog_active()
-			|| ergon_slint_controls::dialogs::stale_input_pending()
-		{
-			use winit::event::WindowEvent::*;
-			if matches!(
-				event,
-				KeyboardInput { .. }
-					| ModifiersChanged(_)
-					| Ime(_)
-					| Focused(_)
-					| CursorMoved { .. }
-					| CursorEntered { .. }
-					| CursorLeft { .. }
-					| MouseWheel { .. }
-					| MouseInput { .. }
-					| Touch(_)
-					| DroppedFile(_)
-			) {
-				return EventResult::PreventDefault;
-			}
+	});
+	let weak = ui.as_weak();
+	ui.window().on_winit_window_event(move |_win, event| -> EventResult {
+		// モーダル ダイアログ (親を操作できない) の表示中は親への入力を
+		// 握り潰す。判定はライブラリへ委譲。
+		if ergon_slint_controls::dialogs::should_block_parent_input(event) {
+			return EventResult::PreventDefault;
 		}
 
 		// Windows: owner HWND の確保とカーソル維持 (生成後 1 回実効があればよい)。
@@ -587,14 +531,13 @@ fn main() -> Result<(), slint::PlatformError> {
 		let winit::event::WindowEvent::KeyboardInput { event: key_event, .. } = event else {
 			return EventResult::Propagate;
 		};
-		// 離し (Released) は処理しない (押下だけで判定する)。
-		if key_event.state != winit::event::ElementState::Pressed {
-			return EventResult::Propagate;
-		}
+		// 押下 / 離しの両方をライブラリの判定へ渡す (Alt の離しで下線を落と
+		// すため)。押下だけを使うブロックはライブラリの内側で判定する。
 		let code = match key_event.physical_key {
 			winit::keyboard::PhysicalKey::Code(c) => c,
 			_ => return EventResult::Propagate,
 		};
+		#[allow(unused_imports)]
 		use winit::keyboard::KeyCode;
 
 		// オーバーレイ式モーダル表示中のキー (Esc=キャンセル / Enter=確定、
@@ -603,120 +546,16 @@ fn main() -> Result<(), slint::PlatformError> {
 			return EventResult::PreventDefault;
 		}
 
-		let open = weak.upgrade().map(|ui| ui.global::<MenuOpenHub>().get_open()).unwrap_or(-1);
-
-		// --- Alt+文字: バー項目のアクセスキーでメニューを開閉 ---
-		if !key_event.repeat && alt_state.load(Relaxed) {
-			if let Some(ui) = weak.upgrade() {
-				let want = pressed_char(key_event).and_then(|p| {
-					[
-						(0usize, ui.get_file_menu_title()),
-						(1, ui.get_task_menu_title()),
-						(2, ui.get_help_menu_title()),
-					]
-					.into_iter()
-					.find(|(_, t)| access_key_char(t) == Some(p.to_ascii_uppercase()))
-					.map(|(id, _)| id)
-				});
-				if let Some(want) = want {
-					let hub = ui.global::<MenuOpenHub>();
-					if hub.get_open() == want as i32 {
-						hub.invoke_close();
-					} else {
-						hub.set_open(want as i32);
-						// キーボードで開いたときは最初の有効行を初期選択にする
-						// (区切り / 無効行は読み飛ばす。モデルが唯一の情報源)。
-						let items = match want {
-							1 => ui.get_task_items(),
-							2 => ui.get_help_items(),
-							_ => ui.get_file_items(),
-						};
-						ui.set_menu_index(next_enabled_row(&items, -1, 1));
-					}
-					return EventResult::PreventDefault;
-				}
-			}
-		}
-
-		// --- メニュー開閉中: 項目のアクセスキー発火 ---
-		if !key_event.repeat && open >= 0 {
-			if let Some(ui) = weak.upgrade() {
-				let items = match open {
-					0 => ui.get_file_items(),
-					1 => ui.get_task_items(),
-					2 => ui.get_help_items(),
-					_ => return EventResult::Propagate,
-				};
-				if let Some(pressed) = pressed_char(key_event) {
-					let row = (0..items.row_count()).find(|&i| {
-						items.row_data(i).map_or(false, |v| {
-							v.entry.enabled
-								&& !v.entry.is_separator
-								&& access_key_char(&v.entry.title) == Some(pressed.to_ascii_uppercase())
-						})
-					});
-					if let Some(row) = row {
-						// 行 → コマンドは Enter と同じ表を使う (menu_action)。
-						if let Some(action) = menu_action(open, row) {
-							let weak = weak.clone();
-							let _ = slint::invoke_from_event_loop(move || {
-								if let Some(ui) = weak.upgrade() {
-									apply_menu_action(&ui, &action);
-								}
-							});
-							return EventResult::PreventDefault;
-						}
-					}
-				}
-			}
-		}
-
-		// --- メニュー開閉中: 上下移動 (有効行のみ、端は折り返す) ---
-		if open >= 0 && matches!(code, KeyCode::ArrowUp | KeyCode::ArrowDown) {
-			let Some(ui) = weak.upgrade() else { return EventResult::PreventDefault };
-			let items = match open {
-				0 => ui.get_file_items(),
-				1 => ui.get_task_items(),
-				2 => ui.get_help_items(),
-				_ => return EventResult::PreventDefault,
-			};
-			let step = if matches!(code, KeyCode::ArrowDown) { 1 } else { -1 };
-			ui.set_menu_index(next_enabled_row(&items, ui.get_menu_index(), step));
-			return EventResult::PreventDefault;
-		}
-
-		// --- メニュー開閉中: 左右でメニュー切替 / Enter で決定 / Esc で閉じる ---
-		if open >= 0 && matches!(code, KeyCode::ArrowLeft | KeyCode::ArrowRight) {
-			if let Some(ui) = weak.upgrade() {
-				let next = if matches!(code, KeyCode::ArrowRight) { (open + 1) % 3 } else { (open + 2) % 3 };
-				ui.global::<MenuOpenHub>().set_open(next);
-				let items = match next {
-					1 => ui.get_task_items(),
-					2 => ui.get_help_items(),
-					_ => ui.get_file_items(),
-				};
-				ui.set_menu_index(next_enabled_row(&items, -1, 1));
-			}
-			return EventResult::PreventDefault;
-		}
-		if open >= 0 && matches!(code, KeyCode::Enter | KeyCode::Space) {
-			if let Some(ui) = weak.upgrade() {
-				let idx = ui.get_menu_index();
-				if idx >= 0 {
-					if let Some(action) = menu_action(open, idx as usize) {
-						apply_menu_action(&ui, &action);
-					}
-				}
+		// メニュー バーのキー操作 (Alt 単体での下線 / Alt+文字での開閉 /
+		// 項目のアクセスキー発火 / 上下左右 / Enter / Esc) はライブラリの判定
+		// へ委譲する。拾われたキーは握り潰す (Alt 単体は下線を出すだけで消費
+		// しないため、アプリの処理は続く)。
+		if let Some(ui) = weak.upgrade() {
+			if ergon_slint_controls::menu::handle_menu_key(&ui, key_event) {
 				return EventResult::PreventDefault;
 			}
 		}
-		if open >= 0 && matches!(code, KeyCode::Escape) {
-			if let Some(ui) = weak.upgrade() {
-				ui.global::<MenuOpenHub>().invoke_close();
-				ui.set_menu_index(-1);
-			}
-			return EventResult::PreventDefault;
-		}
+		let open = weak.upgrade().map(|ui| ui.global::<MenuOpenHub>().get_open()).unwrap_or(-1);
 
 		// --- 開始 / 停止ボタンのアクセスキー (Alt 不要) ---
 		// Slint にボタン用のアクセスキー機構は無いため、タイトルの &X を

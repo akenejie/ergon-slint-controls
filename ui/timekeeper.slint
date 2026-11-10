@@ -10,7 +10,7 @@
 // 注: ライブラリの import 文はファイル内で 1 文にまとめる (生成コードが
 // import 文の数だけ共有グローバル群のフィールドを重複生成するため)。
 import {
-	MenuAccessKey, AccessKeyHub, MenuOpenHub, AccessKeyLabel,
+	MenuAccessKey, AccessKeyHub, MenuOpenHub, MenuKeyControl, AccessKeyLabel,
 	FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView,
 	MenuHintPopup, MenuDismissLayer, TooltipPopup,
 	Label, SmallButton, ModeToggleButton, CosmicCheckBox, SpinBox, TextBox,
@@ -46,17 +46,27 @@ export component TimeKeeperWindow inherits Window {
 	default-font-family: root.ui-font-family;
 
 	// ---- メニューの状態 ----
-	// どのメニューが開いているかは MenuOpenHub (ライブラリのハブ) が持つ。
-	in-out property <int> menu-index: -1;         // キーボード選択中の行
-	in-out property <bool> menu-alt-held: false;  // Alt 押下中 (Rust 側が ModifiersChanged で同期する)
+	// 開いているメニュー / 選択行 / Alt 押下はライブラリのグローバルが持つ
+	// (MenuOpenHub.open / MenuOpenHub.selected-row / MenuAccessKey.alt-held)。
+	// メニュー バーの登録 (MenuKeyControl.menus) は init で行う (下端)。
 
-	// タイトル。& 記法の単一ソース (Rust 側のキー処理も読む)。
+	// タイトル。& 記法の単一ソース (ライブラリのキー判定も読む)。
 	in property <string> file-menu-title: "ファイル (&F)";
 	in property <string> task-menu-title: "タスク (&T)";
 	in property <string> help-menu-title: "ヘルプ (&H)";
 	// 開始/停止ボタンのタイトル (実行中で入れ替わる。Rust 側のキー処理も読む)。
 	in property <string> start-title: root.running ? "停止 (&P)" : "開始 (&B)";
 	in property <string> break-title: "休憩の合図 (&R):";
+
+	// メニュー バーをライブラリへ登録 (キー操作の判定は
+	// menu::handle_menu_key、項目の発火は activate ハンドラ)。
+	init => {
+		MenuKeyControl.menus = [
+			{ title: root.file-menu-title, items: root.file-items },
+			{ title: root.task-menu-title, items: root.task-items },
+			{ title: root.help-menu-title, items: root.help-items },
+		];
+	}
 
 	// ---- アプリの状態 ----
 	in-out property <bool> running: false;
@@ -92,7 +102,7 @@ export component TimeKeeperWindow inherits Window {
 
 		file-button := FluentMenuBarItem {
 			entry: { title: root.file-menu-title };
-			access-key-underline: root.menu-alt-held;   // Alt 押下中だけ下線 (Windows 風)
+			access-key-underline: MenuAccessKey.alt-held; // Alt 押下中だけ下線 (Windows 風)
 			menu-open: MenuOpenHub.open == 0;
 			description: "ログの保存先と CSV 書き出し。";
 			hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.open = 0; } }
@@ -101,7 +111,7 @@ export component TimeKeeperWindow inherits Window {
 
 		task-button := FluentMenuBarItem {
 			entry: { title: root.task-menu-title };
-			access-key-underline: root.menu-alt-held;
+			access-key-underline: MenuAccessKey.alt-held;
 			menu-open: MenuOpenHub.open == 1;
 			description: "計測の開始 / 停止。";
 			hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.open = 1; } }
@@ -110,7 +120,7 @@ export component TimeKeeperWindow inherits Window {
 
 		help-button := FluentMenuBarItem {
 			entry: { title: root.help-menu-title };
-			access-key-underline: root.menu-alt-held;
+			access-key-underline: MenuAccessKey.alt-held;
 			menu-open: MenuOpenHub.open == 2;
 			description: "操作方法とバージョン情報。";
 			hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.open = 2; } }
@@ -364,16 +374,14 @@ export component TimeKeeperWindow inherits Window {
 		height: file-popup.content-height;
 
 		items: root.file-items;
-		access-key-underline: root.menu-alt-held;
-		current-row <=> root.menu-index;
+		access-key-underline: MenuAccessKey.alt-held;
+		current-row <=> MenuOpenHub.selected-row;
 		activated(i) => {
 			if (i >= 0 && root.file-actions[i] != "") {
 				MenuOpenHub.close();
 				root.menu-item-clicked(root.file-actions[i]);
 			}
 		}
-		// 閉じたときに選択をリセットする
-		changed visible => { if (!self.visible) { root.menu-index = -1; } }
 
 		descriptions: [
 			"ログを書き出すフォルダを選びます。",
@@ -391,15 +399,14 @@ export component TimeKeeperWindow inherits Window {
 		height: task-popup.content-height;
 
 		items: root.task-items;
-		access-key-underline: root.menu-alt-held;
-		current-row <=> root.menu-index;
+		access-key-underline: MenuAccessKey.alt-held;
+		current-row <=> MenuOpenHub.selected-row;
 		activated(i) => {
 			if (i >= 0 && root.task-actions[i] != "") {
 				MenuOpenHub.close();
 				root.menu-item-clicked(root.task-actions[i]);
 			}
 		}
-		changed visible => { if (!self.visible) { root.menu-index = -1; } }
 
 		descriptions: [
 			"計測を開始します。",
@@ -417,15 +424,14 @@ export component TimeKeeperWindow inherits Window {
 		height: help-popup.content-height;
 
 		items: root.help-items;
-		access-key-underline: root.menu-alt-held;
-		current-row <=> root.menu-index;
+		access-key-underline: MenuAccessKey.alt-held;
+		current-row <=> MenuOpenHub.selected-row;
 		activated(i) => {
 			if (i >= 0 && root.help-actions[i] != "") {
 				MenuOpenHub.close();
 				root.menu-item-clicked(root.help-actions[i]);
 			}
 		}
-		changed visible => { if (!self.visible) { root.menu-index = -1; } }
 
 		descriptions: [
 			"キーボード操作の一覧を表示します。",

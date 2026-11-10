@@ -257,6 +257,53 @@ pub fn dialog_pop() {
 	dialog_leave();
 }
 
+/// モーダル ダイアログ (同一プロセス GTK / 同期プロセス / 子ウィンドウ) の
+/// 表示中と、その直後の滞留入力破棄期間に、**親ウィンドウへ届いた入力を握
+/// り潰すべきか**を返す。モーダルとは「親を操作できない」ことなので、ダイ
+/// アログが開いている間の親への入力はここで落とす。
+///
+/// アプリの winit イベント フックの先頭で呼ぶ (Windows は OS 側のモーダル処
+/// 理が親の入力を止めるため常時 false):
+///
+/// ```ignore
+/// ui.window().on_winit_window_event(move |_win, event| -> EventResult {
+///     if ergon_slint_controls::dialogs::should_block_parent_input(event) {
+///         return EventResult::PreventDefault;
+///     }
+///     // ... アプリのイベント処理 ...
+/// });
+/// ```
+pub fn should_block_parent_input(
+	event: &slint::winit_030::winit::event::WindowEvent,
+) -> bool {
+	#[cfg(windows)]
+	{
+		let _ = event;
+		false
+	}
+	#[cfg(not(windows))]
+	{
+		if !(dialog_active() || stale_input_pending()) {
+			return false;
+		}
+		use slint::winit_030::winit::event::WindowEvent::*;
+		matches!(
+			event,
+			KeyboardInput { .. }
+				| ModifiersChanged(_)
+				| Ime(_)
+				| Focused(_)
+				| CursorMoved { .. }
+				| CursorEntered { .. }
+				| CursorLeft { .. }
+				| MouseWheel { .. }
+				| MouseInput { .. }
+				| Touch(_)
+				| DroppedFile(_)
+		)
+	}
+}
+
 /// ネイティブダイアログが表示中かどうか。表示中なら親ウィンドウの入力を捨てる
 /// (Windows は OS 側 grab があるので対象外)。
 #[cfg(not(windows))]

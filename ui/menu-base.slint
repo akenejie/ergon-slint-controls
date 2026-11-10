@@ -15,9 +15,14 @@ export struct AccessKeyParts {
 	after: string,
 }
 
-// 実装は ergon_slint_controls::menu::parse_access_key (Rust 側)。
+// 実装は ergon_slint_controls::menu::parse_access_key (Rust 側)。ハンドラは
+// ライブラリが SharedGlobals の初期化で差し込むため、アプリ側の配線は不要。
 export global MenuAccessKey {
 	pure callback parse(title: string) -> AccessKeyParts;
+	// Alt が押されている間 true。メニュー バーのキー判定
+	// (menu::handle_menu_key) が管理する。バー項目の access-key-underline は
+	// これに束ねる (アプリは押下状態を持つ必要がない)。
+	in-out property <bool> alt-held: false;
 }
 
 // ラベルのアクセスキー押下を伝えるハブ。アプリのキー処理から press を呼ぶと、
@@ -37,14 +42,23 @@ export global MenuOpenHub {
 	// 開いているメニューの番号 (バー項目の index)。-1 = どれも開いていない。
 	in-out property <int> open: -1;
 
+	// 開いているメニュー内で選択中の行 (キーボード移動 / hover が書く)。
+	// ポップアップ (FluentMenuFrame) の current-row はこれに束ねる。
+	// -1 = 未選択。close() で -1 に戻る。
+	in-out property <int> selected-row: -1;
+
 	// 開いているメニューを閉じる (外側クリック / ウィンドウの非活性など)。
+	// Alt 押下状態もここで落とす (非活性時に Alt の離しを受け取れないため)。
 	public function close() {
 		self.open = -1;
+		self.selected-row = -1;
+		MenuAccessKey.alt-held = false;
 	}
 
 	// 項目のクリック。同じ項目が開いていれば閉じ、そうでなければ開く。
 	public function toggle(index: int) {
 		self.open = self.open == index ? -1 : index;
+		self.selected-row = -1;
 	}
 }
 
