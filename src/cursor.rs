@@ -63,7 +63,7 @@ const STATE_CUSTOM: u8 = 2;
 #[cfg(not(windows))]
 pub fn set_system_cursor(kind: SystemCursor) {
 	#[cfg(target_os = "linux")]
-	free_x11_custom_cursor();
+	detach_x11_custom_cursor();
 	let want = match kind {
 		SystemCursor::Default => STATE_DEFAULT,
 		SystemCursor::Crosshair => STATE_CROSSHAIR,
@@ -97,14 +97,17 @@ use x11rb::protocol::xproto::{self, ConnectionExt};
 use x11rb::rust_connection::RustConnection;
 
 #[cfg(target_os = "linux")]
+static X11_CURSOR: std::sync::Mutex<Option<X11CursorState>> = std::sync::Mutex::new(None);
+
+#[cfg(target_os = "linux")]
 thread_local! {
-	static X11_CURSOR: std::cell::RefCell<Option<X11CursorState>> = const { std::cell::RefCell::new(None) };
 	static ARGB32_FORMAT: std::cell::RefCell<Option<u32>> = const { std::cell::RefCell::new(None) };
 }
 
 #[cfg(target_os = "linux")]
 struct X11CursorState {
-	conn: RustConnection,
+	/// カーソル資源を作った接続 (資源の解放はこのクライアントしかできない)。
+	conn: std::sync::Arc<RustConnection>,
 	/// このキーで表されるカーソルが現在ウィンドウに載っている。
 	key: i64,
 	/// カーソルを載せたトップレベルウィンドウ (解放時に外すため)。
@@ -113,6 +116,9 @@ struct X11CursorState {
 	pixmap: u32,
 	gc: u32,
 	picture: u32,
+	/// ウィンドウ属性に載っている (ポインタが窓を出たときはライブラリが外
+	/// すが、資源は保持する。再適用は属性書き込み 1 発で済む)。
+	attached: bool,
 }
 
 #[cfg(target_os = "linux")]
@@ -137,14 +143,50 @@ fn free_x11_ring(st: &X11CursorState) {
 	let _ = st.conn.flush();
 }
 
-/// カスタムカーソルをウィンドウから外して解放する (標準カーソルへ戻すとき)。
+/// カスタムカーソルをウィンドウ属性から外す (**資源は保持**)。ポインタが
+/// 窓を出たときの自動復帰用: 窓の外では X のカーソル属性は効かない (OS の
+/// 既定カーソル) ので、属性を外すだけで見た目は Windows と同じになる。資
+/// 源を保持しておくことで、再適用は属性書き込み 1 発で済む (常時カスタム
+/// カーソルのアプリでも再生成が走らない)。
 #[cfg(target_os = "linux")]
-fn free_x11_custom_cursor() {
-	X11_CURSOR.with(|slot| {
-		if let Some(old) = slot.borrow_mut().take() {
-			free_x11_ring(&old);
+fn detach_x11_custom_cursor() {
+	if let Ok(mut slot) = X11_CURSOR.lock() {
+		if let Some(st) = slot.as_mut() {
+			if st.attached {
+				let _ = xproto::change_window_attributes(
+					&st.conn,
+					st.target,
+					&xproto::ChangeWindowAttributesAux { cursor: Some(0), ..Default::default() },
+				)
+				.map(|c| c.ignore_error());
+				let _ = st.conn.flush();
+				st.attached = false;
+			}
 		}
-	});
+	}
+}
+
+/// 外しているカスタムカーソルを属性へ再適用する (資源は生きているので属性
+/// 書き込み 1 発)。
+#[cfg(target_os = "linux")]
+fn attach_x11_custom_cursor() {
+	if let Ok(mut slot) = X11_CURSOR.lock() {
+		if let Some(st) = slot.as_mut() {
+			if !st.attached {
+				let _ = xproto::change_window_attributes(
+					&st.conn,
+					st.target,
+					&xproto::ChangeWindowAttributesAux {
+						cursor: Some(st.cursor),
+						..Default::default()
+					},
+				)
+				.map(|c| c.ignore_error());
+				let _ = st.conn.flush();
+				st.attached = true;
+			}
+		}
+	}
 }
 
 /// ARGB32 ピクセルフォーマットの id を (キャッシュ付きで) 求める。
@@ -180,7 +222,7 @@ fn find_own_window(conn: &RustConnection) -> Option<u32> {
 /// できた後にだけ呼ぶ (非対応環境で画像生成を無駄に走らせない)。
 #[cfg(target_os = "linux")]
 fn build_x11_cursor(key: i64, build: impl FnOnce() -> CursorBitmap) -> Option<X11CursorState> {
-	let (conn, _screen) = x11rb::connect(None).ok()?;
+	let conn: std::sync::Arc<RustConnection> = std::sync::Arc::new(x11rb::connect(None).ok()?.0);
 	let root = conn.setup().roots[0].root;
 	let target = find_own_window(&conn)?;
 	let format = argb32_format(&conn)?;
@@ -236,38 +278,106 @@ fn build_x11_cursor(key: i64, build: impl FnOnce() -> CursorBitmap) -> Option<X1
 	.map(|c| c.ignore_error())?;
 	conn.flush().ok()?;
 
-	Some(X11CursorState { conn, key, target, cursor, pixmap, gc, picture })
+	Some(X11CursorState {
+		conn,
+		key,
+		target,
+		cursor,
+		pixmap,
+		gc,
+		picture,
+		attached: true,
+	})
 }
 
 /// `key` で識別されるカスタムカーソルを取り付ける。既に同じキーが載っていれば
 /// 何もしない。X11 非対応なら false を返す (画像は生成しない)。
+/// ポインタがウィンドウを出たとき (LeaveNotify) にカスタムカーソルを外す監
+/// 視スレッド。アプリのロジックはポインタが窓の外に出るとイベントが止まる
+/// ので、窓属性に残ったカスタムカーソルの解除はライブラリが行う (実測: 左
+/// から出たとき / 無関係なときにカスタムが残る)。資源は保持し、属性の解除
+/// のみ (再適用はアプリの次の set_custom_cursor で属性書き込み 1 発)。
+#[cfg(target_os = "linux")]
+fn start_leave_pump() {
+	static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+	if STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+		return;
+	}
+	std::thread::spawn(move || {
+		let Ok((conn, _)) = x11rb::connect(None) else { return };
+		let mut selected: Option<u32> = None;
+		loop {
+			// 監視対象 (カーソルを載せた窓) の変化を追う。
+			let target = X11_CURSOR
+				.lock()
+				.ok()
+				.and_then(|sl| sl.as_ref().map(|st| st.target));
+			if target != selected {
+				if let Some(t) = target {
+					let _ = conn
+						.change_window_attributes(
+							t,
+							&xproto::ChangeWindowAttributesAux {
+								event_mask: Some(
+									xproto::EventMask::ENTER_WINDOW
+										| xproto::EventMask::LEAVE_WINDOW,
+								),
+								..Default::default()
+							},
+						)
+						.map(|c| c.ignore_error());
+					let _ = conn.flush();
+				}
+				selected = target;
+			}
+			// イベントを待つ (対象が無ければ短い眠りで回す)。
+			let event = if target.is_some() {
+				conn.wait_for_event().ok()
+			} else {
+				std::thread::sleep(std::time::Duration::from_millis(50));
+				conn.poll_for_event().ok().flatten()
+			};
+			let Some(event) = event else { continue };
+			if let x11rb::protocol::Event::LeaveNotify(le) = event {
+				// 子ウィンドウへの遷移 (Inferior) は窓からの出入りではない。
+				// グラブに伴う遷移 (Grab / Ungrab) も無視する。
+				if le.mode == xproto::NotifyMode::NORMAL
+					&& le.detail != xproto::NotifyDetail::INFERIOR
+				{
+					detach_x11_custom_cursor();
+				}
+			}
+		}
+	});
+}
+
 #[cfg(target_os = "linux")]
 pub fn set_custom_cursor(key: i64, build: impl FnOnce() -> CursorBitmap) -> bool {
-	X11_CURSOR.with(|slot| {
-		let mut slot = slot.borrow_mut();
-		if let Some(st) = slot.as_ref() {
-			if st.key == key {
-				SYSTEM_STATE.store(STATE_CUSTOM, std::sync::atomic::Ordering::Relaxed);
-				return true;
-			}
+	let mut slot = X11_CURSOR.lock().unwrap_or_else(|e| e.into_inner());
+	if let Some(st) = slot.as_ref() {
+		if st.key == key {
+			// 同一キー: 資源は生きているので、外れている場合 (ポインタが窓を
+			// 出ていた) は属性書き込み 1 発で再適用する (再生成しない)。
+			attach_x11_custom_cursor();
+			SYSTEM_STATE.store(STATE_CUSTOM, std::sync::atomic::Ordering::Relaxed);
+			return true;
 		}
-		match build_x11_cursor(key, build) {
-			Some(new) => {
-				if let Some(old) = slot.take() {
-					free_x11_ring(&old);
-				}
-				*slot = Some(new);
-				SYSTEM_STATE.store(STATE_CUSTOM, std::sync::atomic::Ordering::Relaxed);
-				true
-			}
-			None => {
-				if let Some(old) = slot.take() {
-					free_x11_ring(&old);
-				}
-				false
-			}
+	}
+	// **古いカーソルを先に解放する**。逆の順 (新しく適用してから古いのを解
+	// 放) だと、解放処理の cursor: 0 が新しいカーソルを上書きして消してし
+	// まう (カスタム → カスタムの切替: ペン幅の変更など。実測)。
+	if let Some(old) = slot.take() {
+		free_x11_ring(&old);
+	}
+	match build_x11_cursor(key, build) {
+		Some(new) => {
+			*slot = Some(new);
+			SYSTEM_STATE.store(STATE_CUSTOM, std::sync::atomic::Ordering::Relaxed);
+			start_leave_pump();
+			true
 		}
-	})
+		None => false,
+	}
 }
 
 /// macOS / その他: winit の標準カーソルしか使えないのでカスタムは非対応。
