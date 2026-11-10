@@ -156,14 +156,48 @@ file-popup := FluentMenuFrame {
     width: max(file-popup.content-width, file-popup.layout-min-width);
     height: file-popup.content-height;
     items: root.file-items;
-    access-key-underline: root.menu-alt-held;   // Alt 押下中だけ下線
-    current-row <=> root.menu-index;            // hover とキーボード選択の集約点
+    access-key-underline: MenuAccessKey.alt-held; // Alt 押下中だけ下線 (ライブラリのキー判定が管理)
+    current-row <=> MenuOpenHub.selected-row;   // hover とキーボード選択の集約点
     activated(i) => {
         MenuOpenHub.close();                    // 選んだら閉じる
         /* 行 i の処理 */
     }
 }
 ```
+
+#### メニュー バーの構造登録とキー操作 (v0.13.0+)
+
+アプリは「メニュー内の項目」と「項目を押されたときの処理」をライブラリへ登
+録するだけで、キー操作 (Alt+文字での開閉 / 項目のアクセスキー発火 / 上下左
+右 / Enter / Esc) と Alt 下線の管理はライブラリが担う:
+
+```slint
+// .slint: バー項目の並びを登録 (title は &X 記法、items はドロップダウンと
+// 同じモデル)
+init => {
+    MenuKeyControl.menus = [
+        { title: root.file-menu-title, items: root.file-items },
+        { title: root.view-menu-title, items: root.view-items },
+    ];
+}
+```
+
+```rust,ignore
+// Rust: 項目が押されたときの処理を登録
+ui.global::<MenuKeyControl>().on_activate(move |menu, row| {
+    /* menu 番目のメニューの row 行が押された */
+});
+
+// winit イベント フックでキーを判定へ委譲する (押下 / 離しの両方を渡す)。
+// 戻り値 true = メニューが拾った (PreventDefault)。Alt 単体は下線を出すだけ
+// で消費しない (アプリの処理は続く)。
+if menu::handle_menu_key(&ui, key_event) {
+    return EventResult::PreventDefault;
+}
+```
+
+`MenuAccessKey.parse` の差し込みはライブラリ内部で行うため、アプリ側の配線
+は不要。
 
 **キーボード操作 (開閉 / 上下 / Enter / アクセスキー) はライブラリが提供しない。**
 項目モデルが有効状態の唯一の情報源なので、アプリはモデルを読んで区切り行と
@@ -405,19 +439,23 @@ ui.global::<AccessKeyHub>().invoke_press(pressed.to_ascii_uppercase().to_string(
 `MessageIcon` = `Error | Info`。`MessageButtons` =
 `Ok | OkCancel | YesNo | YesNoCancel`。`MessageResponse` = `Ok | Cancel | Yes | No`。
 
-ダイアログが OS のモーダリティで守られない環境 (別プロセス表示など) の保険と
-して、表示中と閉じ直後は winit フックで親の入力を握り潰す
-(examples/timekeeper.rs の「ネイティブ ダイアログが表示中 …」ブロック参照):
+ダイアログが OS のモーダリティで守られない環境 (別プロセス表示など) の保険
+として、表示中と閉じ直後は winit フックで親の入力を握り潰す。判定関数
+(`should_block_parent_input`) がライブラリ側にあるので、アプリは 1 行だけ:
 
 ```rust
-if dialog_active() || stale_input_pending() { return EventResult::PreventDefault; }
+if dialogs::should_block_parent_input(event) { return EventResult::PreventDefault; }
 ```
+
+モーダルとは「親を操作できない」こと (ウィンドウ / オーバーレイを問わず)。
+Windows は OS 側のモーダル処理が親の入力を止めるため常時 false を返す。
 
 ### `platform` — OS 固有の窓周り
 
 | 関数 | OS | 内容 |
 |---|---|---|
 | `setup_window(&ui, TitlebarTheme::Light / Dark / System)` | 全 OS | 窓の初期設定。装飾テーマの指定 (内部 UI を fluent-light に固定するなら Light を明示。指定しないと UI と装飾の明暗が分裂する) と、X11 では `_NET_WM_USER_TIME` の設定 (フォーカス盗み取り防止。これが無いと WM は以後開くモーダル子ダイアログの親基準配置・フォーカス付与を行わない)。モーダル子ダイアログのテーマとユーザー操作時刻は `modal_dialog` が既定で親に揃える |
+| `apply_app_icon(&ui, AppIcon)` | 全 OS | アプリ アイコンを OS ごとの正しい方法で適用する (Windows: exe 埋め込みリソース / Linux・macOS: RGBA 画像を winit ウィンドウへ)。アプリは手持ちの情報だけを入れて 1 回呼ぶ。準備できない側は None でよく、エラーにならない |
 | `applied_titlebar_theme()` | 同上 | 現在適用済みのテーマ |
 | `install_window_icon(hwnd, resource_id)` | Windows | exe 埋め込み .ico をタイトルバー / タスクバーへ設定 |
 | `main_window_hwnd(&slint::Window)` | Windows | HWND を取得 |
