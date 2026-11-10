@@ -717,21 +717,23 @@ pub fn message_box(_title: &str, _text: &str, _buttons: MessageButtons) -> Optio
 	None
 }
 
-/// ボタンラベル中の `&X` をアクセラレータ (Alt+X) として取り出す。`&` を除いた
-/// 表示文字列と、あればキー文字を返す。Windows の TaskDialog が `&` を
-/// ニーモニックとして解釈するのと同じ表記を GTK でも再現するためのもの。
+/// ボタンラベル中の `&X` を GTK のニーモニック `_X` へ変換する。GTK は下線
+/// 付きの X を描画し、Alt+X で発火する (Windows の TaskDialog が `&` をニー
+/// モニックとして解釈するのと同じ表記を GTK でも再現するためのもの)。
+/// 注意: 変換なしの旧実装 (split_mnemonic) は「& を消すがアクセスキー文字
+/// も消す」バグで、ラベルが「項目名 ()」のように括弧だけになっていた
+/// (実測)。
 #[cfg(target_os = "linux")]
-fn split_mnemonic(label: &str) -> (String, Option<char>) {
+fn gtk_mnemonic_label(label: &str) -> String {
 	match label.find('&') {
 		Some(pos) => {
-			let mut display = String::with_capacity(label.len());
+			let mut display = String::with_capacity(label.len() + 1);
 			display.push_str(&label[..pos]);
-			let mut chars = label[pos + 1..].chars();
-			let accel = chars.next().map(|c| c.to_ascii_lowercase());
-			display.extend(chars);
-			(display, accel)
+			display.push('_');
+			display.push_str(&label[pos + 1..]);
+			display
 		}
-		None => (label.to_owned(), None),
+		None => label.to_owned(),
 	}
 }
 
@@ -825,24 +827,12 @@ pub fn message_box_custom(
 				text,
 			);
 			dlg.set_title(title);
-			let group = gtk::AccelGroup::new();
-			dlg.add_accel_group(&group);
+			// ラベルの &X は GTK ニーモニック (_X) へ変換する (下線付き表示 +
+			// Alt+X は GTK が処理する。手動アクセラレータは不要)。
 			for (i, label) in choices.iter().enumerate() {
-				let (display, accel) = split_mnemonic(label);
+				let display = gtk_mnemonic_label(label);
 				let resp = gtk::ResponseType::Other(100 + i as u16);
-				let btn = dlg.add_button(&display, resp);
-				if let Some(c) = accel {
-					let keyval = gtk::gdk::keys::Key::from_name(&c.to_string());
-					if *keyval != 0 {
-						btn.add_accelerator(
-							"clicked",
-							&group,
-							*keyval,
-							gtk::gdk::ModifierType::MOD1_MASK,
-							gtk::AccelFlags::VISIBLE,
-						);
-					}
-				}
+				dlg.add_button(&display, resp);
 			}
 			let default_resp = gtk::ResponseType::Other(
 				100 + default.unwrap_or(0).min(choices.len() - 1) as u16,
