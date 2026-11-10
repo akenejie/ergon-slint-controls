@@ -267,11 +267,10 @@ fn main() -> Result<(), slint::PlatformError> {
 
 			// 書き出し中は自前の入力遮断区間を作る (dialog_push / dialog_pop)。
 			// この区間は dialog_active() を true にし、stale_input_pending() が
-			// 閉じ直後の入力を捨てる。Windows は OS 側のモーダル処理に任せる。
-			#[cfg(not(windows))]
-			ergon_slint_controls::dialogs::dialog_push();
+			// 閉じ直後の入力を捨てる (Windows は no-op: OS 側のモーダル処理)。
+			// 親はメイン ウィンドウ (この区間で開くダイアログの所有者)。
+			ergon_slint_controls::dialogs::dialog_push(&ui.window());
 			let result = std::fs::write(&path, csv);
-			#[cfg(not(windows))]
 			ergon_slint_controls::dialogs::dialog_pop();
 
 			match result {
@@ -322,7 +321,6 @@ fn main() -> Result<(), slint::PlatformError> {
 		}
 		// 次のウィンドウ生成がこのウィンドウのモーダル子ダイアログだとライブラ
 		// リへ伝える (X11 では transient 親も生成時に焼き込む)。
-		#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
 		ergon_slint_controls::modal_dialog::mark_next_child_dialog_of(main.window());
 
 		let Ok(dlg) = TimeKeeperExport::new() else { return };
@@ -505,20 +503,6 @@ fn main() -> Result<(), slint::PlatformError> {
 			return EventResult::PreventDefault;
 		}
 
-		// Windows: owner HWND の確保とカーソル維持 (生成後 1 回実効があればよい)。
-		#[cfg(windows)]
-		{
-			use ergon_slint_controls::cursor::install_override;
-			use ergon_slint_controls::dialogs::capture_dialog_owner;
-			use ergon_slint_controls::platform::{install_window_icon, main_window_hwnd};
-			capture_dialog_owner(_win);
-			let hwnd = main_window_hwnd(_win);
-			if !hwnd.is_null() {
-				install_override(_win);
-				install_window_icon(hwnd, 1);   // exe 埋め込みリソースの .ico
-			}
-		}
-
 		// Windows: 非クライアント領域のクリックを拾ったら握り潰す。
 		#[cfg(windows)]
 		if let winit::event::WindowEvent::MouseInput { .. } = event {
@@ -564,26 +548,6 @@ fn main() -> Result<(), slint::PlatformError> {
 
 		EventResult::Propagate
 	});
-
-	// ---------- カーソルの下準備 (Linux: winit ウィンドウをキャッシュ) ----------
-	// winit ウィンドウ (Arc) をライブラリへ渡しておくとカーソル制御に使われる。
-	// set_file_cursor は .cur ファイルから取り付ける (Windows のみ)。
-	#[cfg(not(windows))]
-	{
-		let weak = ui.as_weak();
-		let _ = slint::spawn_local(async move {
-			if let Some(ui) = weak.upgrade() {
-				if let Ok(winit_window) = ui.window().winit_window().await {
-					ergon_slint_controls::cursor::cache_window(winit_window);
-				}
-			}
-		});
-	}
-	#[cfg(windows)]
-	let _ = ergon_slint_controls::cursor::set_file_cursor(
-		2,
-		std::path::Path::new("assets/hand.cur"),
-	);
 
 	// ---------- ウィンドウの初期設定 (テーマ + ユーザー操作時刻) ----------
 	ergon_slint_controls::platform::setup_window(

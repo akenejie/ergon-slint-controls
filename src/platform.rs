@@ -87,6 +87,16 @@ pub fn setup_window<P: slint::ComponentHandle + 'static>(
 			TitlebarTheme::Dark => Some(Theme::Dark),
 			TitlebarTheme::System => None,
 		});
+		// ウィンドウ サービスの準備 (OS ごと。アプリ側は OS 分岐を書かない):
+		// - Windows: モーダル ダイアログの親 HWND の確保 + WM_SETCURSOR で
+		//   自前カーソルを維持する wndproc サブクラス
+		// - Linux / macOS: カーソル制御用の winit ウィンドウ (Arc) のキャッシュ
+		crate::dialogs::capture_dialog_owner(&component.window());
+		crate::cursor::install_override(&component.window());
+		#[cfg(not(windows))]
+		crate::cursor::cache_window(winit_window.clone());
+		#[cfg(windows)]
+		let _ = winit_window;
 		// ユーザー操作時刻 (X11)。winit が扱わないため X プロトコルで直接
 		// 設定する。X プロトコルには「現在時刻」を問い合わせる API が無いた
 		// め、PropertyNotify トリックで取得する。EWMH のフォーカス盗み取り防
@@ -129,13 +139,27 @@ pub(crate) fn place_tooltip_axis(cursor: f32, size: f32, limit: f32) -> f32 {
 	}
 }
 
+/// ショートカット表記の OS 差異を吸収する (macOS: Ctrl → Cmd)。アプリは
+/// Windows 記法 ("Ctrl+Z") を 1 回書くだけでよい。
+pub fn shortcut_label(text: &str) -> String {
+	#[cfg(target_os = "macos")]
+	{
+		text.replace("Ctrl", "Cmd")
+	}
+	#[cfg(not(target_os = "macos"))]
+	{
+		text.to_string()
+	}
+}
+
 // The main window HWND, captured once the native window exists. Passing it as
 // the owner to MessageBoxW makes the box application-modal: while it is up the
 // parent window cannot be selected (clicking it just flashes/shakes, the stock
 // Windows behaviour). Without an owner HWND the box degrades to modeless
 // behaviour and the parent stays selectable.
 #[cfg(windows)]
-pub fn main_window_hwnd(ui: &slint::Window) -> windows_sys::Win32::Foundation::HWND {	use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+pub fn window_hwnd(ui: &slint::Window) -> windows_sys::Win32::Foundation::HWND {
+	use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 	use slint::winit_030::WinitWindowAccessor;
 	ui.with_winit_window(|w| match w.window_handle() {
 		Ok(h) => match h.as_raw() {
@@ -163,11 +187,6 @@ pub fn install_window_icon(
 		GetSystemMetrics, LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_ICON,
 		LR_DEFAULTCOLOR, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, WM_SETICON,
 	};
-	static WINDOW_ICON_SET: std::sync::atomic::AtomicBool =
-		std::sync::atomic::AtomicBool::new(false);
-	if WINDOW_ICON_SET.swap(true, std::sync::atomic::Ordering::SeqCst) {
-		return;
-	}
 	let module = unsafe { GetModuleHandleW(std::ptr::null()) };
 	if module.is_null() {
 		return;
@@ -253,7 +272,7 @@ pub fn apply_app_icon<C: slint::ComponentHandle + 'static>(ui: &C, icon: AppIcon
 		let Ok(winit_window) = ui.window().winit_window().await else { return };
 		#[cfg(windows)]
 		if let Some(id) = icon.windows_resource_id {
-			let hwnd = main_window_hwnd(&ui.window());
+			let hwnd = window_hwnd(&ui.window());
 			if !hwnd.is_null() {
 				install_window_icon(hwnd, id);
 			}

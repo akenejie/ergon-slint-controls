@@ -343,6 +343,91 @@ fn first_enabled_row(items: &slint::ModelRc<MenuItemView>) -> i32 {
 		.map_or(-1, |i| i as i32)
 }
 
+/// アプリ共通のショートカット (元に戻す / やり直し / 終了) の判定。
+/// Windows / Linux は Ctrl+Z / Ctrl+Y / (閉じるは WM の閉じる操作)、macOS
+/// は Cmd+Z / Cmd+Shift+Z / Cmd+Q。winit には OS 差異があり、アプリが差を
+/// 吸収しなくてよいようここに置く。
+
+/// アプリ共通ショートカットの修飾キー (Windows / Linux = Ctrl、macOS =
+/// Command) が押されているか。ModifiersChanged で受け取った状態をそのまま
+/// 渡す。
+pub fn is_shortcut_modifier(mods: &slint::winit_030::winit::keyboard::ModifiersState) -> bool {
+	#[cfg(target_os = "macos")]
+	{
+		mods.super_key()
+	}
+	#[cfg(not(target_os = "macos"))]
+	{
+		mods.control_key()
+	}
+}
+
+/// 元に戻す / やり直しの意図。押下 (非リピート) かつショートカット修飾キー
+/// ( [`is_shortcut_modifier`](menu::is_shortcut_modifier)) のときだけ意味を
+/// 持ち、それ以外は None。`shift` は Shift キーの押下状態 (macOS の
+/// Cmd+Shift+Z = redo の判定に使う)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UndoRedoIntent {
+	Undo,
+	Redo,
+}
+
+pub fn undo_redo_intent(
+	event: &slint::winit_030::winit::event::KeyEvent,
+	shortcut_mod: bool,
+	shift: bool,
+) -> Option<UndoRedoIntent> {
+	use slint::winit_030::winit::event::ElementState;
+	use slint::winit_030::winit::keyboard::{KeyCode, PhysicalKey};
+	if event.state != ElementState::Pressed || event.repeat || !shortcut_mod {
+		return None;
+	}
+	let PhysicalKey::Code(code) = event.physical_key else { return None };
+	match code {
+		KeyCode::KeyZ => {
+			#[cfg(target_os = "macos")]
+			{
+				// macOS 慣例: Cmd+Z = undo、Cmd+Shift+Z = redo。
+				if shift {
+					Some(UndoRedoIntent::Redo)
+				} else {
+					Some(UndoRedoIntent::Undo)
+				}
+			}
+			#[cfg(not(target_os = "macos"))]
+			{
+				let _ = shift;
+				Some(UndoRedoIntent::Undo)
+			}
+		}
+		#[cfg(not(target_os = "macos"))]
+		KeyCode::KeyY => Some(UndoRedoIntent::Redo),
+		_ => None,
+	}
+}
+
+/// 終了ショートカット (macOS = Cmd+Q)。他の OS では常に false (終了は WM の
+/// 閉じる操作 (Alt+F4 など) として CloseRequested で届く)。
+pub fn is_quit_shortcut(
+	event: &slint::winit_030::winit::event::KeyEvent,
+	shortcut_mod: bool,
+) -> bool {
+	#[cfg(target_os = "macos")]
+	{
+		use slint::winit_030::winit::event::ElementState;
+		use slint::winit_030::winit::keyboard::{KeyCode, PhysicalKey};
+		event.state == ElementState::Pressed
+			&& !event.repeat
+			&& shortcut_mod
+			&& matches!(event.physical_key, PhysicalKey::Code(KeyCode::KeyQ))
+	}
+	#[cfg(not(target_os = "macos"))]
+	{
+		let _ = (event, shortcut_mod);
+		false
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

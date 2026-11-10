@@ -23,7 +23,7 @@ use super::{backend, ModalChild};
 // 既に所望のスタイルなら何もしない (フレーム再描画によるちらつきを避ける)。
 #[cfg(windows)]
 pub fn enforce_modal_styles(child: &slint::Window) {
-	use crate::platform::main_window_hwnd;
+	use crate::platform::window_hwnd;
 	use windows_sys::Win32::Graphics::Gdi::{RDW_FRAME, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow};
 	use windows_sys::Win32::UI::WindowsAndMessaging::{
 		GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, GWL_STYLE,
@@ -31,7 +31,7 @@ pub fn enforce_modal_styles(child: &slint::Window) {
 		WS_EX_APPWINDOW, WS_EX_DLGMODALFRAME, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_THICKFRAME, WS_SYSMENU,
 	};
 
-	let child_hwnd = main_window_hwnd(child);
+	let child_hwnd = window_hwnd(child);
 	if child_hwnd.is_null() {
 		return;
 	}
@@ -81,11 +81,11 @@ pub fn enforce_modal_styles(_child: &slint::Window) {}
 // モーダルにする。閉じるときは dismiss_modal_dialog を呼ぶこと。
 #[cfg(windows)]
 pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
-	use crate::platform::main_window_hwnd;
+	use crate::platform::window_hwnd;
 	use windows_sys::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
 	use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWLP_HWNDPARENT};
-	let parent_hwnd = main_window_hwnd(parent);
-	let child_hwnd = main_window_hwnd(child);
+	let parent_hwnd = window_hwnd(parent);
+	let child_hwnd = window_hwnd(child);
 	if child_hwnd.is_null() {
 		return;
 	}
@@ -109,7 +109,7 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 pub fn dismiss_modal_dialog(parent: &slint::Window) {
 	use windows_sys::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
 	use windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
-	let parent_hwnd = crate::platform::main_window_hwnd(parent);
+	let parent_hwnd = crate::platform::window_hwnd(parent);
 	if parent_hwnd.is_null() {
 		return;
 	}
@@ -206,7 +206,7 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		// crate::gtk::debug_trace_map_state(cw.xlib_window().map(|x| x as u32));
 	}
 	});
-	crate::dialogs::dialog_push();
+	crate::dialogs::dialog_push(parent);
 }
 
 #[cfg(not(windows))]
@@ -444,7 +444,7 @@ fn apply_modal_when_ready<P: ComponentHandle + 'static>(
 		let child_window = session.child.window();
 		#[cfg(windows)]
 		{
-			!crate::platform::main_window_hwnd(child_window).is_null()
+			!crate::platform::window_hwnd(child_window).is_null()
 		}
 		#[cfg(not(windows))]
 		{

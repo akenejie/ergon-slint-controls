@@ -278,7 +278,7 @@ pub fn set_custom_cursor(_key: i64, _build: impl FnOnce() -> CursorBitmap) -> bo
 #[cfg(windows)]
 mod win {
 	use super::{CursorBitmap, SystemCursor};
-	use crate::platform::main_window_hwnd;
+	use crate::platform::window_hwnd;
 	use std::cell::RefCell;
 	use std::os::windows::ffi::OsStrExt;
 	use std::path::Path;
@@ -342,7 +342,7 @@ mod win {
 		if OVERRIDE_PROC_INSTALLED.load(std::sync::atomic::Ordering::SeqCst) {
 			return;
 		}
-		let hwnd = main_window_hwnd(ui);
+		let hwnd = window_hwnd(ui);
 		if hwnd.is_null() {
 			return;
 		}
@@ -489,5 +489,11 @@ pub fn install_override(_ui: &slint::Window) {}
 
 #[cfg(not(windows))]
 pub fn take_non_client_click() -> bool {
+	false
+}
+
+/// `.cur` ファイルのカーソル (Windows のみ対応。他の OS では no-op で false)。
+#[cfg(not(windows))]
+pub fn set_file_cursor(_key: i64, _path: &std::path::Path) -> bool {
 	false
 }

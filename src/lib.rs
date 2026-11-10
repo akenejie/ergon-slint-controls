@@ -16,7 +16,6 @@ pub mod menu;
 mod menu_bar_theme;
 #[cfg(feature = "modal-dialog")]
 pub mod modal_dialog;
-#[cfg(windows)]
 mod owner;
 pub mod platform;
 pub mod ui_font;

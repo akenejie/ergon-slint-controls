@@ -516,6 +516,12 @@ pub fn current_server_time(win: u32) -> Option<u32> {
 /// 表示中 (Viewable) の窓を優先して選ぶ。見つからなければ先頭にフォールバック
 /// する (最小化中など)。
 fn pick_parent_window(conn: &x11rb::rust_connection::RustConnection) -> Option<u32> {
+	// dialog_push(parent) で指定された親を最優先する (複数ウィンドウ / 入れ
+	// 子のモーダルで、アプリが親を明示できる)。未指定なら従来のヒューリス
+	// ティック (自アプリの表示中の窓) にフォールバックする。
+	if let Some(xid) = crate::owner::current_owner_xid() {
+		return Some(xid);
+	}
 	use x11rb::protocol::xproto::{ConnectionExt as _, MapState};
 	let mut first = None;
 	for w in crate::platform::linux_own_windows(conn) {

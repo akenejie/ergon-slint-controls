@@ -108,7 +108,7 @@ pub fn mark_next_child_dialog_of(parent: &slint::Window) {
 /// 所有者なしのウィンドウになる (タスクバーに別枠で出るなど)。
 #[cfg(windows)]
 pub fn note_owner_hwnd(hwnd: isize) {
-	crate::owner::set_owner_hwnd(hwnd as *mut core::ffi::c_void);
+	crate::owner::set_marked_owner_hwnd(hwnd as *mut core::ffi::c_void);
 }
 
 /// (Windows) 子ダイアログの所有者を Slint ウィンドウから直接登録する。
@@ -117,11 +117,11 @@ pub fn note_owner_hwnd(hwnd: isize) {
 /// 本クレート内で行う。メインウィンドウ生成後に 1 度呼ぶ。
 #[cfg(windows)]
 pub fn note_owner_window(window: &slint::Window) {
-	let hwnd = crate::platform::main_window_hwnd(window);
+	let hwnd = crate::platform::window_hwnd(window);
 	if hwnd.is_null() {
 		return;
 	}
-	crate::owner::set_owner_hwnd(hwnd);
+	crate::owner::set_marked_owner_hwnd(hwnd);
 }
 
 /// winit バックエンドを明示構築し、子ダイアログ生成フックを仕込む。
@@ -155,7 +155,7 @@ pub fn prepare_backend() -> Result<(), slint::PlatformError> {
 				// ダイアログ枠と位置 (表示直前の所有者中央配置) は winit パッチ
 				// フォーク由来の API (fork は modal-dialog feature が要求する)。
 				let attrs = attrs.with_dialog_modal_frame(true);
-				let owner = crate::owner::owner_hwnd();
+				let owner = crate::owner::marked_owner_hwnd();
 				let attrs = if owner.is_null() {
 					attrs
 				} else {

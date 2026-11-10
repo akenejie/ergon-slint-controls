@@ -35,11 +35,15 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 // dialogs via crate::owner.
 /// 初期化済みなら親ウィンドウの HWND を覚え、モーダルダイアログの親に使う。
 /// 一度だけ設定する (ウィンドウが再生成されても最初の HWND を維持)。
+/// (Windows: 親 HWND を確保してモーダルの親に使う。他の OS では no-op。)
 #[cfg(windows)]
 pub fn capture_dialog_owner(ui: &slint::Window) {
-	let hwnd = crate::platform::main_window_hwnd(ui);
-	crate::owner::set_owner_hwnd_once(hwnd);
+	let hwnd = crate::platform::window_hwnd(ui);
+	crate::owner::set_base_owner_hwnd(hwnd);
 }
+
+#[cfg(not(windows))]
+pub fn capture_dialog_owner(_ui: &slint::Window) {}
 
 /// TaskDialogIndirect の共通呼び出し。`hwndParent` (crate::owner = 親ウィンドウ)
 /// を渡すと、OS がタスクダイアログを「親ウィンドウの中央」に配置する
@@ -66,7 +70,7 @@ fn task_dialog_center_parent(
 	let message_w = encode_wide(message);
 	let mut config = TASKDIALOGCONFIG::default();
 	config.cbSize = std::mem::size_of::<TASKDIALOGCONFIG>() as u32;
-	config.hwndParent = crate::owner::owner_hwnd();
+	config.hwndParent = crate::owner::current_owner_hwnd();
 	// TDF_POSITION_RELATIVE_TO_WINDOW が「hwndParent 基準でセンタリング」を
 	// 有効にする。これを付けない場合、OS は hwndParent を渡していても
 	// 「モニタ基準」でダイアログを配置する (画面中央になる)。
@@ -206,7 +210,7 @@ pub fn show_message_box(title: &str, text: &str, kind: MessageIcon) {
 			MessageIcon::Error => MB_ICONERROR,
 			MessageIcon::Info => MB_ICONINFORMATION,
 		};
-		let owner = crate::owner::owner_hwnd();
+		let owner = crate::owner::current_owner_hwnd();
 		unsafe {
 			// 親ウィンドウ中央への移動用に、このスレッド限定の CBT フックを
 			// MessageBoxW の間だけ張る。フックプロシージャ内で移動してから
@@ -248,12 +252,28 @@ fn dialog_leave() {
 /// 外部プロセス (zenity 等) に加えて、同一プロセスの Slint 製ダイアログ
 /// (アプリ側の `dialog` モジュール) が表示・非表示を切り替えるたびに呼ぶ。
 #[cfg(not(windows))]
-pub fn dialog_push() {
+/// モーダル区間の開始。`parent` はこの区間で開くダイアログの親となるウィン
+/// ドウ (入れ子のモーダルでは、そのとき開いているダイアログのウィンドウ)。
+/// Windows では HWND、Linux では X ウィンドウ ID を所有者スタックへ積む
+/// ([`dialog_pop`](dialogs::dialog_pop) で外れる)。指定がない区間のダイア
+/// ログは基本の所有者 (最初のウィンドウ) を親にする。
+#[cfg(not(windows))]
+pub fn dialog_push(parent: &slint::Window) {
 	dialog_enter();
+	crate::owner::push_owner(parent);
 }
 
-#[cfg(not(windows))]
+/// (Windows: 入力遮断は OS 側のモーダル処理が行うため、所有者スタックの操
+/// 作のみ。子ウィンドウ方式で開いたダイアログからさらにダイアログを開くと
+/// きに、親を正しく指定するために使う。)
+#[cfg(windows)]
+pub fn dialog_push(parent: &slint::Window) {
+	crate::owner::push_owner(parent);
+}
+
 pub fn dialog_pop() {
+	crate::owner::pop_owner();
+	#[cfg(not(windows))]
 	dialog_leave();
 }
 
@@ -762,7 +782,7 @@ pub fn message_box_custom(
 
 		let mut config = TASKDIALOGCONFIG::default();
 		config.cbSize = std::mem::size_of::<TASKDIALOGCONFIG>() as u32;
-		config.hwndParent = crate::owner::owner_hwnd();
+		config.hwndParent = crate::owner::current_owner_hwnd();
 		config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW | TDF_USE_HICON_MAIN;
 		config.pszWindowTitle = title_w.as_ptr();
 		config.Anonymous1 = TASKDIALOGCONFIG_0 {
@@ -956,7 +976,7 @@ pub fn prompt_folder(title: &str, initial: Option<&Path>) -> Option<PathBuf> {
 
 	// 親ウィンドウは capture_dialog_owner が記録した HWND。OS はこれを owner
 	// (モーダル) かつ配置の基準 (hwndOwner の中央) として使う。
-	let owner_hwnd = crate::owner::owner_hwnd();
+	let owner_hwnd = crate::owner::current_owner_hwnd();
 
 	// IFileDialog は COM コンポーネントなので、使うスレッド上で初期化する。
 	// S_OK ならここで初期化したので後で解放、S_FALSE (既に初期化済み) なら解放しない。
