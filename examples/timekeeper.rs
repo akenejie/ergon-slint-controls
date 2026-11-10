@@ -25,8 +25,7 @@
 // クレート内にあるため同じコンパイル単位で直接 import しているが、API の形は
 // 同じ (README の「参照方法の要点」を参照)。
 
-use ergon_slint_controls::menu::{access_key_char, pressed_char};
-use ergon_slint_controls::{AccessKeyHub, MenuKeyControl, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
+use ergon_slint_controls::{MenuKeyControl, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
 use ergon_slint_controls::modal_dialog::{ModalMode, OverlayHost as _};
 
 /// このサンプルのモーダル表示方式。全 OS (win/linux/macos) 共に子ウィンドウ
@@ -363,6 +362,13 @@ fn main() -> Result<(), slint::PlatformError> {
 	}
 
 	// ---------- メニューのコールバック ----------
+	// ボタンのアクセスキーが押された (ライブラリの照合 → action コールバック)。
+	{
+		let start_stop = start_stop.clone();
+		ui.global::<MenuKeyControl>().on_action(move |_idx| {
+			start_stop();
+		});
+	}
 	{
 		let weak = ui.as_weak();
 		let slot = export_slot.clone();
@@ -553,37 +559,6 @@ fn main() -> Result<(), slint::PlatformError> {
 		if let Some(ui) = weak.upgrade() {
 			if ergon_slint_controls::menu::handle_menu_key(&ui, key_event) {
 				return EventResult::PreventDefault;
-			}
-		}
-		let open = weak.upgrade().map(|ui| ui.global::<MenuOpenHub>().get_open()).unwrap_or(-1);
-
-		// --- 開始 / 停止ボタンのアクセスキー (Alt 不要) ---
-		// Slint にボタン用のアクセスキー機構は無いため、タイトルの &X を
-		// 自分で読んで発火させる (単一ソース。ボタンのタイトルは実行中で
-		// 入れ替わるため、プロパティ経由で同じ文字列を読む)。
-		if !key_event.repeat && open < 0 {
-			if let Some(pressed) = pressed_char(key_event).map(|c| c.to_ascii_uppercase()) {
-				if let Some(ui) = weak.upgrade() {
-					if access_key_char(&ui.get_start_title()) == Some(pressed) {
-						start_stop();
-						return EventResult::PreventDefault;
-					}
-				}
-			}
-		}
-
-		// --- ラベルのアクセスキー (休憩の合図 &R) → AccessKeyHub へ通知 ---
-		// 一致する Label が access-key-pressed を発火し、ハンドラで
-		// スピンボックスへフォーカスする。
-		if !key_event.repeat && open < 0 {
-			if let Some(ui) = weak.upgrade() {
-				if let Some(pressed) = pressed_char(key_event) {
-					if access_key_char(&ui.get_break_title()) == Some(pressed.to_ascii_uppercase()) {
-						ui.global::<AccessKeyHub>()
-							.invoke_press(pressed.to_ascii_uppercase().to_string().into());
-						return EventResult::PreventDefault;
-					}
-				}
 			}
 		}
 

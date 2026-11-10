@@ -18,7 +18,7 @@
 //! - 末尾の孤立した `&` → リテラルの `&`
 //! - `&` が無ければアクセスキーなし
 
-use crate::{MenuAccessKey, MenuBarMenu, MenuKeyControl, MenuItemView, MenuOpenHub};
+use crate::{AccessKeyHub, MenuAccessKey, MenuBarMenu, MenuKeyControl, MenuItemView, MenuOpenHub};
 
 /// `before + key + after` は marker を除いた元のタイトルに一致する。
 /// `key` が空ならアクセスキーなし。
@@ -156,6 +156,7 @@ where
 	MenuKeyControl<'a>: slint::Global<'a, C>,
 	MenuAccessKey<'a>: slint::Global<'a, C>,
 	MenuOpenHub<'a>: slint::Global<'a, C>,
+	AccessKeyHub<'a>: slint::Global<'a, C>,
 {
 	use slint::Model as _;
 	use slint::winit_030::winit::event::ElementState;
@@ -192,38 +193,48 @@ where
 		None
 	};
 
-	// Alt+文字: バー項目のアクセスキーでメニューを開く (**閉じている間**)。
-	// 開いている間は下の「メニュー開閉中」処理へ進む (Esc / 矢印 / Enter を
-	// 含む)。以前はこの分岐が Alt 押下中の全キーを早期 return していたた
-	// め、Alt+F で開いた直後 (Alt を押したままの Esc) に Esc が効かなかっ
-	// た (実測)。
-	if alt_held && open < 0 {
+	// メニューが閉じている間の文字照合。
+	// - Alt 押下中はバー項目のアクセスキー (メニューを開く) を最優先。
+	// - ラベル (AccessKeyHub 対応) / ボタンのアクセスキーは Alt の有無にかか
+	//   わらず照合する (押された文字をハブ / action コールバックへ回す)。
+	// - いずれにも一致しなければ消費しない (アプリ固有のショートカットを優
+	//   先する)。
+	if open < 0 {
 		if let Some(pressed) = pressed {
-			let want = (0..menus.row_count() as i32).find(|&i| {
-				menus.row_data(i as usize).map_or(false, |m| {
-					access_key_char(&m.title) == Some(pressed)
-				})
-			});
-			if let Some(want) = want {
-				hub.set_open(want);
-				if let Some(m) = menu_row(want) {
-					hub.set_selected_row(first_enabled_row(&m.items));
+			if alt_held {
+				let want = (0..menus.row_count() as i32).find(|&i| {
+					menus.row_data(i as usize).map_or(false, |m| {
+						access_key_char(&m.title) == Some(pressed)
+					})
+				});
+				if let Some(want) = want {
+					hub.set_open(want);
+					if let Some(m) = menu_row(want) {
+						hub.set_selected_row(first_enabled_row(&m.items));
+					}
+					return true;
 				}
+			}
+			let label_keys = registry.get_label_keys();
+			let label_hit = (0..label_keys.row_count()).any(|i| {
+				label_keys.row_data(i).as_deref() == Some(&pressed.to_string())
+			});
+			if label_hit {
+				ui.global::<AccessKeyHub>().invoke_press(pressed.to_string().into());
+				return true;
+			}
+			let action_keys = registry.get_action_keys();
+			if let Some(idx) = (0..action_keys.row_count()).find(|&i| {
+				action_keys.row_data(i).as_deref() == Some(&pressed.to_string())
+			}) {
+				registry.invoke_action(idx as i32);
 				return true;
 			}
 		}
-		// バー項目に一致しない場合は消費しない (アプリ固有の Alt ショート
-		// カットを優先する)。
 		return false;
 	}
 
-	if open < 0 {
-		return false;
-	}
-
-	// --- メニュー開閉中 (Alt の有無にかかわらず) ---
-
-	// 文字: 項目のアクセスキー発火。一致しなければバー項目を照合する
+	// --- メニュー開閉中 (Alt の有無にかかわらず) ---	// 文字: 項目のアクセスキー発火。一致しなければバー項目を照合する
 	// (Alt+文字でのメニュー切替)。
 	if let Some(pressed) = pressed {
 		if let Some(m) = menu_row(open) {

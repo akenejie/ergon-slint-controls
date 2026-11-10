@@ -327,4 +327,18 @@ export global MenuKeyControl {
 	// 項目がキー操作で発火された (アプリがハンドラを登録する)。
 	// menu = バー項目の index、row = 項目モデルの行 index。
 	callback activate(int, int);
+
+	// ラベル (Label / AccessKeyHub 対応) のアクセスキー一覧 (アプリが登録す
+	// る。MenuAccessKey.parse(タイトル).key の形)。メニューが閉じている間に
+	// 押された文字をここで照合し、一致すれば AccessKeyHub.press でラベルへ
+	// 通知する (ラベルの access-key-pressed が発火する)。
+	in-out property <[string]> label-keys: [];
+
+	// ボタンのアクセスキー一覧 (アプリが登録する)。メニューが閉じている間
+	// に押された文字をここで照合し、一致すれば action(index) を発火する。
+	in-out property <[string]> action-keys: [];
+
+	// アクセスキー付きボタンがキー操作で発火された (アプリがハンドラを登録
+	// する)。index = action-keys の行。
+	callback action(int);
 }

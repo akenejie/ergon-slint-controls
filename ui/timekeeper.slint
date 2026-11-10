@@ -66,6 +66,9 @@ export component TimeKeeperWindow inherits Window {
 			{ title: root.task-menu-title, items: root.task-items },
 			{ title: root.help-menu-title, items: root.help-items },
 		];
+		// ラベル / ボタンのアクセスキー (キー検出と消費判断はライブラリ)。
+		MenuKeyControl.label-keys = [ MenuAccessKey.parse(root.break-title).key ];
+		MenuKeyControl.action-keys = [ MenuAccessKey.parse(root.start-title).key ];
 	}
 
 	// ---- アプリの状態 ----
