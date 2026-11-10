@@ -142,27 +142,18 @@ pub fn activate_window_until_focused(win: u32) {
 	if focused(&conn) {
 		return;
 	}
-	let ticks = std::cell::Cell::new(0u32);
-	let holder = std::rc::Rc::new(std::cell::RefCell::new(None::<slint::Timer>));
-	let holder2 = holder.clone();
-	let timer = slint::Timer::default();
-	timer.start(
-		slint::TimerMode::Repeated,
-		std::time::Duration::from_millis(60),
-		move || {
-			let n = ticks.get() + 1;
-			ticks.set(n);
-			if n > 20 || focused(&conn) {
-				if let Some(t) = holder2.borrow_mut().take() {
-					t.stop();
-				}
+	// ポーリングはスレッドで行う。呼び出し元には再帰 GTK ループ
+	// (gtk_dialog_run) の内側がある: そこでは slint のタイマが回らず、スレ
+	// ッドなら確実に回る。接続はこの関数内で新規に張ったもの (別接続) なの
+	// で、UI スレッドでなくても安全。
+	std::thread::spawn(move || {
+		for _ in 0..20 {
+			std::thread::sleep(std::time::Duration::from_millis(60));
+			if focused(&conn) {
 				return;
 			}
 			// 窓が消えていたら (ダイアログが閉じられたら) 諦める。
 			if conn.get_window_attributes(win).map(|c| c.reply().is_err()).unwrap_or(true) {
-				if let Some(t) = holder2.borrow_mut().take() {
-					t.stop();
-				}
 				return;
 			}
 			let Some(state) = intern(&conn, b"_NET_ACTIVE_WINDOW") else { return };
@@ -176,9 +167,8 @@ pub fn activate_window_until_focused(win: u32) {
 				)
 				.map(|c| c.ignore_error());
 			let _ = conn.flush();
-		},
-	);
-	*holder.borrow_mut() = Some(timer);
+		}
+	});
 }
 
 // X ウィンドウへの単発の活性化要求 (`_NET_ACTIVE_WINDOW` ClientMessage)。
@@ -605,12 +595,26 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 	let grab_off = std::env::var("NO_GRAB").is_ok();
 	let conn = x11rb::connect(None).ok().map(|(c, _)| c);
 	let parent = conn.as_ref().and_then(pick_parent_window);
+	let dialog_xids = conn
+		.as_ref()
+		.map(|c| realize_dialog_xids(dlg, c))
+		.unwrap_or_default();
 	if !transient_off {
 		if let (Some(c), Some(p)) = (conn.as_ref(), parent) {
 			// マップ前にダイアログのトップレベル X 窓へ transient を付ける
 			// (WM が親基準で配置し、親より下に降ろせなくする)。
-			for x in realize_dialog_xids(dlg, c) {
-				set_transient_for(c, x, p);
+			for x in &dialog_xids {
+				set_transient_for(c, *x, p);
+			}
+		}
+		// マップ前に _NET_WM_USER_TIME を書く (モーダル子ダイアログで得た知
+		// 見: WM は管理開始時に user time を読み、無いと「ユーザー操作と無
+		// 関係に開いた窓」としてフォーカスを与えない)。値は GDK が記憶して
+		// いる最後のユーザー入力の時刻 (このダイアログを開かせた操作)。
+		let user_time = gtk::current_event_time();
+		if user_time != 0 {
+			for x in &dialog_xids {
+				write_user_time(*x, user_time);
 			}
 		}
 	}
@@ -618,6 +622,12 @@ pub fn run_dialog_blocking<D: IsA<gtk::Dialog>>(dlg: &D) -> gtk::ResponseType {
 
 	dlg.show();
 	wait_viewable(dlg.upcast_ref(), 1500);
+	// マップ後の活性化ループ (モーダル子ダイアログで得た知見: Mutter は管
+	// 理開始時に自分でフォーカスを与えない。マップ後約 60ms から受理される
+	// _NET_ACTIVE_WINDOW 要求を、フォーカスされるまで繰り返す)。
+	if let Some(&x) = dialog_xids.first() {
+		activate_window_until_focused(x);
+	}
 	let ping_restore = if ping_off {
 		None
 	} else {
