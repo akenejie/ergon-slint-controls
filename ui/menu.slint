@@ -30,6 +30,9 @@ export global MenuBarTheme {
 	in-out property <color> bar-background: #FFFFFF;
 	// バー下端の下線。
 	in-out property <color> bar-underline: #E5E5E5;
+	// バー下端の下線の太さ。テーマがバーに固有の背景色を与える (白以外の)
+	// 環境では 0px にして下線を消し、バー全体をそのぶん小さくする。
+	in-out property <length> bar-underline-height: 2px;
 	// バー項目の文字色。
 	in-out property <color> bar-foreground: #000000E6;
 	// ドロップダウン メニュー。
@@ -79,7 +82,7 @@ export component FluentMenuBarItem {
 		font-size: 1.0909rem;
 		horizontal-padding: 8px;
 		top-padding: 0px;
-		bottom-padding: 4px;
+		bottom-padding: 2px + MenuBarTheme.bar-underline-height;
 		default-foreground: MenuBarTheme.bar-foreground;
 		hover-foreground: MenuBarTheme.bar-foreground;
 		// 押下中は文字を少し沈める (背景との間を取る)。
@@ -118,13 +121,14 @@ export component FluentMenuBarImpl {
 		@children
 	}
 
-	// Windows 10 標準風: 下端 2px の下線。バーの上に重ねて描く (TouchArea で
-	// はないのでクリックは下のメニューボタンへ通る)。
+	// Windows 10 標準風: 下端の下線。バーの上に重ねて描く (TouchArea ではな
+	// いのでクリックは下のメニューボタンへ通る)。太さは MenuBarTheme.bar-
+	// underline-height (テーマ適用環境では 0px = 描かれない)。
 	Rectangle {
 		x: 0;
-		y: root.height - 2px;
+		y: root.height - MenuBarTheme.bar-underline-height;
 		width: 100%;
-		height: 2px;
+		height: MenuBarTheme.bar-underline-height;
 		background: MenuBarTheme.bar-underline;
 	}
 }

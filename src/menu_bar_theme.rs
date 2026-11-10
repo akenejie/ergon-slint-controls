@@ -31,6 +31,9 @@ pub(crate) struct MenuBarColors {
 	pub bar_background: slint::Color,
 	/// バー下端の下線。
 	pub bar_underline: slint::Color,
+	/// バー下端の下線の太さ (px)。テーマがバーに固有の背景色を与える環境で
+	/// は 0 (下線を消してバーを小さくする)。
+	pub bar_underline_height: f32,
 	/// バー項目の文字色。
 	pub bar_foreground: slint::Color,
 	/// ドロップダウン メニューの背景。
@@ -49,6 +52,7 @@ fn default_colors() -> MenuBarColors {
 	MenuBarColors {
 		bar_background: slint::Color::from_argb_encoded(0xFFFF_FFFF),
 		bar_underline: slint::Color::from_argb_encoded(0xFFE5_E5E5),
+		bar_underline_height: 2.0,
 		bar_foreground: slint::Color::from_argb_encoded(0xE600_0000),
 		menu_background: slint::Color::from_argb_encoded(0xFFFA_FAFA),
 		menu_foreground: slint::Color::from_argb_encoded(0xE600_0000),
@@ -113,6 +117,7 @@ pub(crate) fn reapply_after_init(theme: &ThemeGlobal) {
 fn apply_one(theme: &ThemeGlobal, colors: &MenuBarColors) {
 	theme.bar_background.set(colors.bar_background);
 	theme.bar_underline.set(colors.bar_underline);
+	theme.bar_underline_height.set(i_slint_core::lengths::LogicalLength::new(colors.bar_underline_height));
 	theme.bar_foreground.set(colors.bar_foreground);
 	theme.menu_background.set(colors.menu_background);
 	theme.menu_foreground.set(colors.menu_foreground);
@@ -301,12 +306,12 @@ fn query_gtk_menu_bar_theme() -> MenuBarColors {
 		bar_background,
 	);
 	// 下線は「バーが既定の白のまま」のときだけ付ける (Windows 10 標準風の
-	// 見た目)。テーマがバーに固有の色を与えている (白以外) なら下線を外し、
-	// その 2px は背景色にする (下線色を背景色へ揃える)。
-	let bar_underline = if bar_background.as_argb_encoded() == 0xFFFF_FFFF {
-		mix_color(bar_background, bar_foreground, 0.12)
+	// 見た目)。テーマがバーに固有の色を与えている (白以外) なら下線を消し
+	// (太さ 0)、バー全体をそのぶん小さくする (色の同化ではない)。
+	let (bar_underline, bar_underline_height) = if bar_background.as_argb_encoded() == 0xFFFF_FFFF {
+		(mix_color(bar_background, bar_foreground, 0.12), 2.0)
 	} else {
-		bar_background
+		(mix_color(bar_background, bar_foreground, 0.12), 0.0)
 	};
 
 	let menu_ctx = menu.style_context();
@@ -339,6 +344,7 @@ fn query_gtk_menu_bar_theme() -> MenuBarColors {
 	let colors = MenuBarColors {
 		bar_background,
 		bar_underline,
+		bar_underline_height,
 		bar_foreground,
 		menu_background,
 		menu_foreground,
