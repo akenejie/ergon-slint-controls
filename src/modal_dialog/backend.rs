@@ -94,6 +94,9 @@ pub fn mark_next_child_dialog_of(parent: &slint::Window) {
 	mark_next_window_as_child_dialog();
 	#[cfg(all(unix, not(target_os = "macos")))]
 	{
+		// フォーク使用時は inherent が優先され、本 import は未使用扱いになる。
+		#[allow(unused_imports)]
+		use crate::platform::WinitXlibWindow;
 		use slint::winit_030::WinitWindowAccessor;
 		let xid = parent
 			.with_winit_window(|pw| pw.xlib_window())

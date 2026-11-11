@@ -129,6 +129,12 @@ pub fn dismiss_modal_dialog(parent: &slint::Window) {
 #[cfg(not(windows))]
 pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 	use slint::winit_030::WinitWindowAccessor;
+	// WinitXlibWindow: フォークなしの winit (tarball 検証ビルド) では None を
+	// 返すフォールバックが使われる (詳細は platform.rs の定義)。フォーク使用
+	// 時は inherent が優先され、本 import は未使用扱いになる。
+	#[cfg(all(unix, not(target_os = "macos")))]
+	#[allow(unused_imports)]
+	use crate::platform::WinitXlibWindow;
 	// 固定サイズ + 閉じるボタンだけ、をウィンドウ マネージャへ要求する。
 	// X11 の set_resizable(false) は MWM ヒント (最大化不可・min=max) を設定する。
 	//

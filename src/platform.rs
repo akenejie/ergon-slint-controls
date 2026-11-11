@@ -8,6 +8,38 @@ pub fn encode_wide(s: &str) -> Vec<u16> {
 	s.encode_utf16().chain(Some(0)).collect()
 }
 
+// ---------------------------------------------------------------------------
+// Linux/X11: winit ウィンドウから X ウィンドウ ID (XID) を取得する互換層
+// ---------------------------------------------------------------------------
+
+/// X11 のウィンドウ ID を winit ウィンドウから取得する (フォーク互換層)。
+///
+/// crates.io の winit 0.30 には `Window::xlib_window()` が存在しない (0.29
+/// で廃止され、`WindowExtX11` は空トレイト)。一方、modal-dialog feature が
+/// 要求する winit パッチ フォーク (slint-modal-winit) は同名の inherent メ
+/// ソッドを独自に提供している。Rust のメソッド解決は inherent を trait よ
+/// り優先するため、フォーク使用時はそちら (実 XID)、非使用時 (crates.io 版
+/// winit — `cargo publish` の tarball 検証ビルドなど、[patch] はパッケージ
+/// に同梱されない) はこのトレイトのフォールバック (None) が選ばれ、どちら
+/// でもコンパイルが通る。None 時の動作は各呼び出し側が既に持っているフォー
+/// ラック (XID 未設定のまま続行) に委ねる。
+#[cfg(all(unix, not(target_os = "macos")))]
+// フォーク使用時は inherent メソッドが解決されるため本トレイトは未使用扱い
+// になる (dead_code)。フォークなしビルド (tarball 検証) でのみ使用される。
+#[allow(dead_code)]
+pub(crate) trait WinitXlibWindow {
+	/// X11 ウィンドウ ID。取得できない環境 (フォークなしの winit 0.30) では
+	/// `None`。
+	fn xlib_window(&self) -> Option<u32>;
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+impl WinitXlibWindow for slint::winit_030::winit::window::Window {
+	fn xlib_window(&self) -> Option<u32> {
+		None
+	}
+}
+
 /// ウィンドウ装飾 (タイトルバー) のテーマ。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TitlebarTheme {
