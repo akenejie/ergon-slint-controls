@@ -1,8 +1,16 @@
 [package]
 name = "ergon-slint-controls"
-version = "0.16.1"
+version = "0.16.2"
 edition = "2021"
 links = "ergon-slint-controls"
+authors = ["akenejie <akenejie@users.noreply.github.com>"]
+# LICENSE ファイル (GNU Affero General Public License v3 本文) に準拠。
+license = "AGPL-3.0"
+description = "Slint 製デスクトップ GUI アプリ向けの汎用コントロール集と OS ネイティブ機能 (メニューバー、ネイティブ モーダル ダイアログ、メッセージ ボックス、カスタム カーソル、UI フォントの OS 適合)"
+readme = "README.md"
+repository = "https://github.com/akenejie/ergon-slint-controls"
+keywords = ["slint", "gui", "menu", "dialog", "cursor"]
+categories = ["gui", "os::linux", "os::windows-apis"]
 
 [lib]
 path = "src/lib.rs"
