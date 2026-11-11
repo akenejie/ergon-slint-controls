@@ -1,6 +1,6 @@
 [package]
 name = "ergon-slint-controls"
-version = "0.16.3"
+version = "0.16.4"
 edition = "2021"
 links = "ergon-slint-controls"
 authors = ["akenejie <akenejie@users.noreply.github.com>"]
@@ -76,6 +76,13 @@ gtk = "0.18"
 # 付け損ねるため、ここから確実に XID を取る。
 gdkx11 = "0.18"
 
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+# platform::winit_xlib_window_id: winit ウィンドウから X ウィンドウ ID (XID)
+# を取得する。winit 0.30 で廃止された inherent メソッド xlib_window の代わ
+# りに、公式の raw-window-handle (rwh_06) 経由で取得する。crates.io 版 winit
+# と modal パッチ フォークのどちらの winit でも動く。
+raw-window-handle = "0.6"
+
 [build-dependencies]
 # as_library() を使うには experimental-module-builds が必要。
 slint-build = { version = "1.17", features = ["experimental-module-builds"] }
@@ -84,5 +91,11 @@ slint-build = { version = "1.17", features = ["experimental-module-builds"] }
 # 必須とする。Cargo の仕様上 [patch] はビルドのルートにしか書けないため、
 # 本ワークスペース自身のビルド/テスト用にここにも置く (feature を有効にする
 # 利用アプリも同じ 1 行を置く必要がある)。
+# 注意: [patch] は**同名のパッケージ**でしか差し替えられないため、フォークの
+# package 名は `winit` である必要がある (crate 名を変えると slint の依存グラ
+# フから外れ、フォークの機能が届かなくなる)。タグ v0.30.13-modal.15 は未改名
+# (package 名 winit) なのでこのまま使える。フォーク リポジトリの main ブラン
+# チは package 名を slint-modal-winit へ変更済みのため、**main からタグを打つ
+# と [patch] が壊れる** (package 名 winit に戻してからタグを打つこと)。
 [patch.crates-io]
 winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.15" }

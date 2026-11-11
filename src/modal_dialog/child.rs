@@ -129,12 +129,6 @@ pub fn dismiss_modal_dialog(parent: &slint::Window) {
 #[cfg(not(windows))]
 pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 	use slint::winit_030::WinitWindowAccessor;
-	// WinitXlibWindow: フォークなしの winit (tarball 検証ビルド) では None を
-	// 返すフォールバックが使われる (詳細は platform.rs の定義)。フォーク使用
-	// 時は inherent が優先され、本 import は未使用扱いになる。
-	#[cfg(all(unix, not(target_os = "macos")))]
-	#[allow(unused_imports)]
-	use crate::platform::WinitXlibWindow;
 	// 固定サイズ + 閉じるボタンだけ、をウィンドウ マネージャへ要求する。
 	// X11 の set_resizable(false) は MWM ヒント (最大化不可・min=max) を設定する。
 	//
@@ -146,7 +140,9 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 	// transient / modal ヒントは winit パッチ フォーク由来の API を使う
 	// (fork は modal-dialog feature が要求する)。
 	#[cfg(all(unix, not(target_os = "macos")))]
-	let _parent_xid = parent.with_winit_window(|pw| pw.xlib_window()).flatten();
+	let _parent_xid = parent
+		.with_winit_window(crate::platform::winit_xlib_window_id)
+		.flatten();
 	child.with_winit_window(|cw| {
 	// X11 (linux): transient / modal / 固定サイズ / 閉じるボタンのみは**生成時
 	// に焼き込み済み** (backend.rs の生成フック → winit フォーク modal.6+)。
@@ -192,7 +188,7 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		// トのたびに自動更新するため、ここでは触らない。
 		#[cfg(target_os = "linux")]
 		{
-			if let Some(child) = cw.xlib_window() {
+			if let Some(child) = crate::platform::winit_xlib_window_id(cw) {
 				let child = child as u32;
 				let t = crate::gtk::current_server_time(child);
 				if let Some(t) = t {
@@ -209,7 +205,7 @@ pub fn present_modal_dialog(parent: &slint::Window, child: &slint::Window) {
 		// (診断コード) マップ / アンマップの遷移追跡。コメントアウト済み —
 		// 再調査は src/gtk.rs の debug_trace_map_state を復活させる。
 		// #[cfg(target_os = "linux")]
-		// crate::gtk::debug_trace_map_state(cw.xlib_window().map(|x| x as u32));
+		// crate::gtk::debug_trace_map_state(crate::platform::winit_xlib_window_id(cw).map(|x| x as u32));
 	}
 	});
 	crate::dialogs::dialog_push(parent);

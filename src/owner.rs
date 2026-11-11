@@ -75,13 +75,12 @@ pub(crate) fn push_owner(parent: &slint::Window) {
 	}
 	#[cfg(all(unix, not(target_os = "macos")))]
 	{
-		// WinitXlibWindow: フォークなしの winit (tarball 検証ビルド) では
-		// None を返すフォールバックが使われる (詳細は platform.rs の定義)。
-		// フォーク使用時は inherent が優先され、本 import は未使用扱いになる。
-		#[allow(unused_imports)]
-		use crate::platform::WinitXlibWindow;
+		// XID は公式の raw-window-handle 経由で取得する (platform.rs の
+		// winit_xlib_window_id — フォークなしの winit でも動く)。
 		use slint::winit_030::WinitWindowAccessor;
-		let xid = parent.with_winit_window(|w| w.xlib_window()).flatten();
+		let xid = parent
+			.with_winit_window(crate::platform::winit_xlib_window_id)
+			.flatten();
 		let Some(xid) = xid else { return };
 		if let Ok(mut stack) = OWNER_STACK_X.lock() {
 			stack.push(xid as u32);
