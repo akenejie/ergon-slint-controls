@@ -88,6 +88,7 @@ export component TimeKeeperWindow inherits Window {
 	in-out property <bool> break-reminder: true;
 	in-out property <[SessionEntry]> sessions: [];   // 今日のセッション一覧
 	in-out property <string> hint-text;           // アプリ側のヒント (計測開始など)
+	in-out property <bool> status-bar-visible: true;  // ステータスバー (ウィンドウ下端) の表示
 
 	// CSV 書き出しのオプション (オーバーレイ パネルが直接バインドし、
 	// 子ウィンドウ方式は Rust が開くときに同期する)。
@@ -142,19 +143,9 @@ export component TimeKeeperWindow inherits Window {
 		x: 0;
 		y: menu-bar.height;
 		width: root.width;
-		height: root.height - menu-bar.height;
-
-		// アプリ側のヒント行 (メニュー項目の説明は左下ポップアップが出す)
-		Rectangle {
-			height: 20px;
-			Text {
-				x: 8px;
-				vertical-alignment: center;
-				font-size: 0.8rem;
-				color: #999;
-				text: root.hint-text;
-			}
-		}
+		// ステータスバー (ウィンドウ下端) のぶんだけ本体を縮める
+		height: root.height - menu-bar.height
+			- (root.status-bar-visible ? status-bar.height : 0px);
 
 		// 時計カードを置く領域 (ドラッグで移動できる)
 		main-area := Rectangle {
@@ -349,12 +340,13 @@ export component TimeKeeperWindow inherits Window {
 	in-out property <[MenuItemView]> file-items: [
 		{ entry: { title: "ログの保存先フォルダ... (&O)", enabled: true } },
 		{ entry: { title: "CSV を書き出す (&E)...", enabled: root.sessions.length > 0 } },
+		{ entry: { title: "ステータスバーを表示 (&S)", checkable: true, checked: root.status-bar-visible } },
 		{ entry: { is-separator: true, enabled: false } },
 		{ entry: { title: "終了 (&X)", enabled: true }, shortcut-text: "Alt+F4" },
 	];
 	// 行 index → コマンド。区切り行は "" (発火しない)。
 	// (Rust 側のキーボード処理は同じ表を menu_action() に持つ)
-	property <[string]> file-actions: [ "--folder", "--csv", "", "--exit" ];
+	property <[string]> file-actions: [ "--folder", "--csv", "--status-bar", "", "--exit" ];
 	in-out property <[MenuItemView]> task-items: [
 		{ entry: { title: "開始 (&B)", enabled: !root.running } },
 		{ entry: { title: "停止 (&P)", enabled: root.running } },
@@ -516,7 +508,40 @@ export component TimeKeeperWindow inherits Window {
 
 
 	// ---- メニュー項目の説明 (左下ポップアップ方式) ----
-	MenuHintPopup { }
+	// ---- ステータスバー (ウィンドウ下端。アプリのヒント行) ----
+	status-bar := Rectangle {
+		x: 0;
+		y: root.height - 24px;
+		width: root.width;
+		height: 24px;
+		visible: root.status-bar-visible;
+		background: #FFFFFF;
+
+		// 上端の罫線
+		Rectangle {
+			x: 0;
+			y: 0;
+			width: 100%;
+			height: 1px;
+			background: #E0E0E0;
+		}
+
+		Text {
+			x: 8px;
+			width: parent.width - 16px;
+			vertical-alignment: center;
+			font-size: 0.8rem;
+			color: #666;
+			overflow: elide;
+			text: root.hint-text;
+		}
+	}
+
+	// メニュー項目のヒントポップアップ: ステータスバーの上に出す
+	MenuHintPopup {
+		y: 0;
+		height: root.height - (root.status-bar-visible ? status-bar.height : 0px);
+	}
 
 	// ---- コントロールのツールチップ (カーソル追従) ----
 	// ルートの最後に置く (最前面の透明レイヤ。クリックは下へ素通しする)。

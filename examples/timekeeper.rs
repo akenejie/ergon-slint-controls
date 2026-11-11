@@ -39,7 +39,7 @@ use std::rc::Rc;
 /// (メニュー index, 行 index) → コマンド。区切り行は None。
 /// .slint 側の file-actions / task-actions / help-actions と同じ表。
 fn menu_action(menu: i32, row: i32) -> Option<String> {
-	const FILE: [&str; 4] = ["--folder", "--csv", "", "--exit"];
+	const FILE: [&str; 5] = ["--folder", "--csv", "--status-bar", "", "--exit"];
 	const TASK: [&str; 4] = ["--start", "--stop", "", "--clear"];
 	const HELP: [&str; 2] = ["--help", "--about"];
 	match menu {
@@ -404,6 +404,7 @@ fn main() -> Result<(), slint::PlatformError> {
 			// まとまる (表示更新は 1 回だけ)。
 			match id.as_str() {
 				"--start" | "--stop" => start_stop(),
+				"--status-bar" => ui.set_status_bar_visible(!ui.get_status_bar_visible()),
 				"--clear" => {
 					// 破壊的な操作: カスタム ボタンのメッセージ ボックスで確認
 					// する (message_box_custom: 押されたボタンの choices 添字が
