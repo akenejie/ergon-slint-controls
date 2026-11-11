@@ -1,636 +1,299 @@
 # ergon-slint-controls
+<p align="center">
+  <img src="./readme-assets/timekeeper-mint.webp" alt="timekeeper-mint"><br>
+</p>
 
-Slint 向けの汎用部品集と OS 統合ユーティリティ。デスクトップ GUI アプリに必要な
-「メニューバー + モーダル ダイアログ + ネイティブ メッセージ ボックス +
-Windows 風の `&` アクセスキー」を 1 つのライブラリで揃える。
+## はじめに：私たちの「画面の土地」を取り戻すために
 
-配置や WM 制御は OS / WM の責任とし、このライブラリは「部品の描画」「記法の
-解釈」「OS ネイティブ機能の呼び出し」までを担い、それをどう使うかはすべて
-呼び出し側に任せる。
+あなたは、最近のパソコンのUIが「やけにデカい」と感じたことはありませんか？
 
-| 柱 | 内容 | 参照方法 |
+Windows 8 以降、まるでタブレットのようにタッチパネルを前提としたUIが増えたことにより、画面の貴重な領域が占領され、マウスの移動量も無駄に増えてしまいました。複数ウィンドウを自由に行き来できるパソコンならではの利点が打ち消され、「私の大切な土地を占領するな」と憤りを感じたことがあるのは、きっとあなただけではありません。
+
+一方で、情報密度が高くクラシックなUIを持つクロスプラットフォームアプリを作ろうとすると、別の壁にぶつかります。Web技術（Electronなど）を使えばメモリを大食いする重いソフトになってしまい、C++（Qtなど）を使えばWindowsで大量の依存ファイル群を同梱する羽目になります。
+
+そこでまず注目したのが、Rustならではの軽量かつ高速なUIフレームワークである **Slint** です。スマートフォンや車載ディスプレイもターゲットとしているため、Windows 7 時代と比べれば確かにデカいですが、Slint のコントロールをフォークして余白さえ調整すれば、軽量かつデカくないGUIが構築できるのではないか、と考えたのが、このプロジェクトの始まりです。
+
+しかし、ergon-slint-controls に含まれているのはコントロールだけではありません。私がSlintでデスクトップアプリを開発していたときの違和感への修正が含まれています。というのは、Slintは、スマートフォンのように、設定画面やメッセージボックスといったダイアログが「1つのウィンドウの中に収まるオーバーレイ」として表示することを想定していて、小ウィンドウが簡単に創れません。
+Linuxなどのデスクトップ環境で、モーダルダイアログを表示している時にドラッグして裏のウィンドウの情報を確認したくても、自分の管理下にあるウィンドウマネージャーのルールに背きダイアログが画面を塞いでしまい、「スマホじゃねーよ、複数ウィンドウを同時に表示しながら行き来できるのがパソコンだろ」ともどかしく思ったことはないでしょうか？
+
+**「モダンな開発体験を残しつつ、Windows 7時代のような適度な余白に縮めたUIが欲しい」**
+**「OSネイティブのウィンドウやダイアログの挙動を、簡単に呼び出したい」**
+
+モダンとクラシックの長所を融合させ、そんな理想のGUIを構築するために生まれたのが、この **`ergon-slint-controls`** です。
+
+## 概要
+
+Slint 向けの汎用部品集と OS 統合ユーティリティ。デスクトップ GUI アプリに不可欠な
+「メニューバー + モーダルダイアログ + ネイティブメッセージボックスを Windows でおなじみの `&` アクセスキーで統一したコードで記述できる」（ライブラリがLinuxはアンダーバーに勝手に読み替えてコンパイルします）状態を 1 つのライブラリで揃え、更にはマウスポインタをカスタム画像にするような、OSに依存する面倒な処理までライブラリに含めています。（Rustなら使わない関数はコンパイル時に排除されるので、ちょっと手が届きにくいOS依存な処理群まで含めています）
+
+配置や WM 制御は OS / WM の責任とし、このライブラリは「部品の描画」「記法の解釈」「OS ネイティブ機能の呼び出し」までを担い、それをどう使うかはすべて呼び出し側に任せます。
+
+| カテゴリ | 内容 | 参照方法 |
 |---|---|---|
 | Slint 部品 | メニューバー / 小ボタン / トグルボタン / チェックボックス / スピンボックス / テキストボックス / 複数行テキストボックス / スクロールビュー / ラベル / ツールチップレイヤ | `.slint` 内で `import { ... } from "@ergon_slint_controls"` |
 | Rust ユーティリティ | `menu` (`&` 記法パース) / `dialogs` (ネイティブ ダイアログ) / `platform` (タイトルバー・アイコン・修飾キー) / `cursor` (カーソル制御) / `gtk` (Linux) | `use ergon_slint_controls::...` |
 | `modal_dialog` | モーダル ダイアログ制御 (feature `modal-dialog` / 既定オフ) | `use ergon_slint_controls::modal_dialog::...` |
 
-**完全に動くサンプルが `examples/timekeeper.rs`** (作業時間トラッカー「じかん君」)。
-全機能を実際に配線したコードはここにある。この README は API の解説であり、
-ライブラリに触る要点だけを載せる。サンプルは `modal_dialog` を使うため、
-実行時に feature を有効にする (`[[example]] required-features` で宣言済み)。
-表示方式はサンプルのソースコード内の定数 (`MODAL_MODE = ModalMode::ChildWindow`)
-で決めている。
+**完全に動くサンプルが `examples/timekeeper.rs`** （作業時間トラッカー「じかん君」）にあります。
+全機能を実際に配線したコードはここにあるため、このREADMEではAPIの解説とライブラリに触る要点に絞っています。
+サンプルは `modal-dialog` 機能を使用しているため、以下のように実行します。
 
 ```sh
 cargo run --example timekeeper --features modal-dialog
 ```
 
-(サンプルは左下ポップアップ方式 + `MenuDismissLayer` による外側クリック閉じ。
-ステータスバー方式は `MenuHintHub.text` を自分のステータス行に束ねる。)
-
----
-
-## 参照方法の要点
+## 導入方法
 
 ### Cargo.toml
 
 ```toml
 [dependencies]
-# slint 本体。ergon-slint-controls と同じ feature セットにする。
+# slint 本体。ergon-slint-controls と同じ feature セットにします。
 slint = { version = "1.17", features = ["std", "backend-winit", "renderer-femtovg", "compat-1-2", "unstable-winit-030"] }
-# 本ライブラリ (バージョンは git タグで固定)。
-# モーダル制御も使うなら feature を有効にする。表示方式 (子ウィンドウ /
-# オーバーレイ) は feature では決めず、アプリのソースコード内の定数
-# (modal_dialog::ModalMode) で決める。
+
+# 本ライブラリ。モーダル制御も使うなら feature を有効にします。
+# 表示方式 (子ウィンドウ / オーバーレイ) はアプリのソースコード内の定数で決めるため、ここでは指定しません。
 ergon-slint-controls = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.5.0", features = ["modal-dialog"] }
-# モーダル制御を使わない (メニュー / ネイティブ ダイアログだけ) なら feature 無し。
-# ergon-slint-controls = { git = "https://github.com/akenejie/ergon-slint-controls", tag = "v0.5.0" }
 
 [build-dependencies]
-# experimental-module-builds は必須 (下の @import 解決の仕組み)。
+# experimental-module-builds は必須 (@import 解決の仕組み)。
 slint-build = { version = "1.17", features = ["experimental-module-builds"] }
 
-# modal-dialog feature は生 winit のパッチ フォークを必要とする (既定オフなら不要)。
-# Cargo の仕様で [patch] はビルドのルート (アプリ) に置く。
+# modal-dialog feature を有効にする場合、生 winit のパッチフォークが必要です。
 [patch.crates-io]
 winit = { git = "https://github.com/akenejie/slint-modal-winit", tag = "v0.30.13-modal.10" }
 ```
 
-`modal-dialog` feature を有効にすると、子ダイアログを生成時点から正しい OS
-属性で作るために winit パッチ フォークが必要になる (上の `[patch.crates-io]`)。
-feature を無効にしたビルドはフォーク不要で、メニュー / ネイティブ ダイアログ
-だけを使うアプリはそのまま動く。
-
-Linux は `libgtk-3-dev` + `pkg-config` が必要 (同一プロセス GTK ダイアログ用)。
-
-Windows では、アプリの実行ファイルに **Common-Controls v6 を要求する
-アプリケーション マニフェストを埋め込むこと** (汎用的な Windows GUI の要件で、
-本ライブラリ固有ではない)。マニフェストが無いと comctl32.dll が v5.82 に
-解決され、ネイティブ ダイアログ (TaskDialog) やカーソル処理が静的に参照する
-v6 専用のエントリ ポイントが見つからず、起動直後に
-STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139) で落ちる。Cargo の仕様上、
-ライブラリの build.rs から依存アプリの実行ファイルへリンカー引数を渡すことは
-できないため、この埋め込みはアプリ側の作業になる (embed-manifest クレートの
-`embed_manifest(new_manifest("..."))` 1 行でよい。本ライブラリのサンプルは
-build.rs が埋め込み済み)。
+> **注意:**
+> * Linux では `libgtk-3-dev` + `pkg-config` が必要です (同一プロセス GTK ダイアログ用)。
+> * Windows では、アプリの実行ファイルに **Common-Controls v6 を要求するアプリケーションマニフェストを埋め込む**必要があります。これがないと起動直後に `STATUS_ENTRYPOINT_NOT_FOUND` でクラッシュします（Rustの `embed-manifest` クレート等で対応可能）。
+> 
+> 
 
 ### build.rs
 
 ```rust
 fn main() {
-    let config = slint_build::CompilerConfiguration::new().with_style("fluent-light".into());
-    slint_build::compile_with_config("ui/main.slint", config).unwrap();
+	let config = slint_build::CompilerConfiguration::new().with_style("fluent-light".into());
+	slint_build::compile_with_config("ui/main.slint", config).unwrap();
 }
 ```
 
-`.slint` 内の `@ergon_slint_controls` import は、本ライブラリの
-`links = "ergon-slint-controls"` が build.rs へ届ける
-`DEP_ERGON_SLINT_CONTROLS_SLINT_LIBRARY_*` メタデータで自動解決される
-(`as_library` コンパイル + `experimental-module-builds`)。build.rs には書かない。
-
-注: ライブラリの import 文は **.slint ファイルごとに 1 文にまとめる**
-(生成コードが import 文の数だけ共有グローバル群のフィールドを重複生成する
-ため。複数ファイルに分かれる場合は、どれか 1 ファイルで import して他の
-ファイルからはそのファイルを相対 import して再利用する)。
+`.slint` 内の `@ergon_slint_controls` インポートはライブラリ内部で自動解決されるため、`build.rs` に特別な記述は不要です。
 
 ### .slint (マークアップ側の参照)
 
 ```slint
-import { Label, SmallButton, ModeToggleButton, CosmicCheckBox, SpinBox,
-         FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView,
-         MenuAccessKey, AccessKeyHub, AppTooltip } from "@ergon_slint_controls";
+import { Label, SmallButton, ModeToggleButton, CosmicCheckBox, SpinBox, TextBox,
+		 FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView,
+		 MenuAccessKey, AccessKeyHub, AppTooltip, MenuHintPopup, TooltipPopup } from "@ergon_slint_controls";
 
-// グローバルを Rust 側から触るにはルート .slint で再エクスポートする (slint の仕様)
+// グローバルを Rust 側から触るにはルート .slint で再エクスポートします
 export { MenuAccessKey, AccessKeyHub }
 ```
 
-### Rust (ライブラリ側の参照)
+## Slint 部品リファレンス
 
-```rust
-use ergon_slint_controls::menu::{parse_access_key, access_key_char, pressed_char};
-use ergon_slint_controls::{AccessKeyHub, AccessKeyParts, MessageIcon, ...};
-use ergon_slint_controls::modal_dialog::{ModalSlot, ModalChild, OverlayHost, ...};
-```
+### `&` アクセスキー記法
 
----
+タイトル文字列に Win32 標準の記法をそのまま書きます。これが表示（下線）と動作の唯一の情報源となります。
 
-## `&` アクセスキー記法
+* `&X` : `X` をアクセスキーにする（下線が引かれる）
+* `&&` または 末尾の孤立した `&` : リテラルの `&`
 
-タイトル文字列に Win32 標準の記法をそのまま書く:
+### UI部品一覧
 
-| 記法 | 意味 |
-|---|---|
-| `&X` | `X` をアクセスキーにする (下線が引かれる) |
-| `&&` | リテラルの `&` |
-| 末尾の孤立した `&` | リテラルの `&` |
-| `&` なし | アクセスキーなし |
+| 部品 | 主なプロパティ / コールバック | 備考 |
+| --- | --- | --- |
+| `Label` | `text` / `access-key-pressed()` | アクセスキーが押されると発火 |
+| `SmallButton` | `text`, `icon`, `tooltip-text`, `primary`, `enabled` / `clicked()` | 高さ 22px 級の小ボタン |
+| `ModeToggleButton` | 同上 / `checked` / `clicked()` | 群から 1 つ選ぶトグル |
+| `CosmicCheckBox` | `checked`, `checked-color` | 見た目だけのチェックボックス。クリック処理は自前実装 |
+| `SpinBox` | `value` (in-out), `minimum`, `maximum`, `step-size`, `read-only` / `edited(int)` | 上下ボタン付きの数値入力 |
+| `TextBox` | `text` (in-out), `placeholder-text`, `read-only`, `input-type` / `accepted`, `edited` | 1 行テキスト入力。右クリックでコンテキストメニュー対応 |
+| `MultiLineTextBox` | `text` (in-out), `wrap`, `content-x/y` / `edited`, `key-pressed` | 複数行テキスト入力 (スクロール付き) |
+| `ScrollView` | `content-width/height` (in-out) / `scrolled()` | スクロールビュー (ScrollBar 付き Flickable) |
+| `AppTooltip` | `text`, `padding-h`, `padding-v` | 組み込み `Tooltip` 要素の中身として使う |
 
-**タイトル文字列がアクセスキーの唯一の情報源**。描画 (下線付きラベル) も
-Rust 側のキー発火も同じ 1 本の文字列から同じ関数で読むため、表示と動作が
-必ず一致する。
+### メニューバー関連部品
 
----
+ドロップダウンは標準の `MenuBar` と異なり、**アプリが配置する in-window オーバーレイ**です。
 
-## Slint 部品
+| 部品 | 役割 |
+| --- | --- |
+| `FluentMenuBarImpl` | メニューバーのベース |
+| `FluentMenuBarItem` | バー項目。`description` プロパティは hover 中に `MenuHintHub` へ報告されます |
+| `FluentMenuFrame` | ドロップダウン本体。`activated(int)` で選択処理を行います |
+| `MenuEntry` | 項目データ (`title`, `shortcut`, `checkable`, `checked`, `is-separator`) |
+| `MenuDismissLayer` | メニューの外側クリックで閉じるためのレイヤ |
 
-### メニュー (FluentMenuBarImpl / FluentMenuBarItem / FluentMenuFrame)
-
-| 部品 | 主なプロパティ / コールバック | 役割 |
-|---|---|---|
-| `FluentMenuBarImpl` | (子に `FluentMenuBarItem` を並べる) | メニューバー |
-| `FluentMenuBarItem` | `entry: MenuEntry` / `menu-open` / `access-key-underline` / `description` / `clicked()` / `hovered()` | バー項目。`description` は hover 中に `MenuHintHub` へ報告される |
-| `FluentMenuFrame` | `items: [MenuItemView]` / `current-row` / `descriptions: [string]` / `access-key-underline` / `activated(int)` / `content-width` / `content-height` / `layout-min-width` | ドロップダウン本体。`descriptions` は行ごとの説明 (hover / キーボード選択中の行が `MenuHintHub` へ報告される) |
-| `MenuItemView` | `entry: MenuEntry` / `shortcut-text: string` | 項目 1 行分 |
-| `MenuEntry` | `title` / `shortcut` / `checkable` / `checked` / `enabled` / `is-separator` | 項目データ。`&` 記法は `title` に書く |
-| `AccessKeyLabel` | `text` / `underline` / `color` / `font-size` / `font-weight` / `horizontal-alignment` / `plain-text` | `&` 記法を解釈するテキストの素 |
-| `MenuHintPopup` | (配置するだけ) | メニュー項目の説明を出す左下ポップアップ (後述) |
-| `MenuDismissLayer` | `active` / `top` / `dismiss()` | メニューの外側クリックで閉じるレイヤ (後述) |
-
-ドロップダウンは標準 `MenuBar` と違い **アプリが配置する in-window オーバーレイ**:
+**メニューバーの構造登録とキー操作 (v0.13.0+)**
+アプリは「メニュー内の項目」と「処理」を登録するだけです。Altキーによる開閉や下線管理はライブラリが行います。
 
 ```slint
-file-popup := FluentMenuFrame {
-    visible: MenuOpenHub.open == 0;             // 開閉状態はハブが持つ
-    x: file-button.absolute-position.x;
-    y: menu-bar.height - 1px;
-    width: max(file-popup.content-width, file-popup.layout-min-width);
-    height: file-popup.content-height;
-    items: root.file-items;
-    access-key-underline: MenuAccessKey.alt-held; // Alt 押下中だけ下線 (ライブラリのキー判定が管理)
-    current-row <=> MenuOpenHub.selected-row;   // hover とキーボード選択の集約点
-    activated(i) => {
-        MenuOpenHub.close();                    // 選んだら閉じる
-        /* 行 i の処理 */
-    }
-}
-```
-
-#### メニュー バーの構造登録とキー操作 (v0.13.0+)
-
-アプリは「メニュー内の項目」と「項目を押されたときの処理」をライブラリへ登
-録するだけで、キー操作 (Alt+文字での開閉 / 項目のアクセスキー発火 / 上下左
-右 / Enter / Esc) と Alt 下線の管理はライブラリが担う:
-
-```slint
-// .slint: バー項目の並びを登録 (title は &X 記法、items はドロップダウンと
-// 同じモデル)
 init => {
-    MenuKeyControl.menus = [
-        { title: root.file-menu-title, items: root.file-items },
-        { title: root.view-menu-title, items: root.view-items },
-    ];
+	MenuKeyControl.menus = [
+		{ title: root.file-menu-title, items: root.file-items },
+	];
 }
 ```
 
-```rust,ignore
-// Rust: 項目が押されたときの処理を登録
-ui.global::<MenuKeyControl>().on_activate(move |menu, row| {
-    /* menu 番目のメニューの row 行が押された */
-});
+### ツールチップとポップアップ
 
-// winit イベント フックでキーを判定へ委譲する (押下 / 離しの両方を渡す)。
-// 戻り値 true = メニューが拾った (PreventDefault)。Alt 単体は下線を出すだけ
-// で消費しない (アプリの処理は続く)。
-if menu::handle_menu_key(&ui, key_event) {
-    return EventResult::PreventDefault;
-}
-```
-
-`MenuAccessKey.parse` の差し込みはライブラリ内部で行うため、アプリ側の配線
-は不要。
-
-**キーボード操作 (開閉 / 上下 / Enter / アクセスキー) はライブラリが提供しない。**
-項目モデルが有効状態の唯一の情報源なので、アプリはモデルを読んで区切り行と
-無効行を読み飛ばしながら `current-row` を動かす。パターンは
-examples/timekeeper.rs のキー処理 (Alt+文字で開閉、ArrowUp/Down、Enter、Esc、
-開閉中のアクセスキー発火) をそのまま使える。
-
-**メニューバー / メニューの色** (Linux は GTK テーマ追従、他 OS は Windows 10
-標準風の固定値): アプリ側の設定は不要。`platform::setup_window` を呼ぶと、
-Linux ではその時点で GTK テーマから取得した色 (Chromium ui/gtk と同じ方式)
-がライブラリ内部で `MenuBarTheme` グローバル (menu.slint) へ流し込まれる
-(実体は from_library 共有、プロセスで 1 回だけ取得)。文字色もテーマに追従
-し (テーマの指定が背景と同系で読めない場合は背景の輝度から決めた色へ差し
-替え)、下線はバーが白のときだけ付く (テーマがバーに固有の色を与えている
-場合は下線を外してその 2px は背景色)。色を変えたい場合は `MenuBarTheme`
-のプロパティを後から上書きできる。
-
-**UI フォント** (オプトイン): 使うときは `ui_font::apply_os_default()` を 1
-回呼ぶだけ (OS 分岐不要)。呼ばないときはこの機能は最終バイナリに含まれな
-い (リンカのデッドコード除去)。呼ぶと、表示される各ウィンドウの既定フォン
-トを OS 標準へ揃える:
-
-- **Windows**: Yu Gothic UI。slint の既定は Segoe UI へ落ちるが、Segoe UI
-  は和文を持たず和文だけ別書体へフォールバックするため、欧文と和文で書体
-  が混在する。Yu Gothic UI は和欧両対応 (Windows 10/11 の日本語 UI の標準
-  書体)。
-- **Linux**: デスクトップ環境の UI フォント設定 (GTK の `gtk-font-name` —
-  GNOME なら `org.gnome.desktop.interface font-name` と同じもの) を実行時
-  に読んで適用する (ファミリ名のハードコードは無し。デスクトップ環境でフ
-  ォントを変えれば追従)。slint の既定 (fontconfig の `sans-serif` 汎用別
-  名) はデスクトップ環境の UI フォントとは別物で、周囲の GTK アプリと書体
-  がズレるため。
-- **macOS など**: 何もしない (システム既定のまま)。
-
-アプリが自前のファミリを明示したい場合は、`default-font-family` の参照先
-プロパティへ空でない値を入れる (ライブラリは空のときだけ OS 標準へ揃え
-る)。
-
-この機能は、ウィンドウの .slint が `default-font-family` を**動的バインディ
-ング**で宣言している場合にのみ働く (未宣言やリテラル固定だとコンパイラが
-プロパティを定数化し、実行時の差し替えが不可能になるため。ライブラリは定
-数化されたウィンドウを検出して何もしない — panic もしないが機能も無効)。
-`setup_window` や `apply_os_default()` の呼び出しタイミングでは初期化が済
-んでいるため、表示時点でこの値が反映される。
+アプリのウィンドウのルートの**最後**に以下の透明レイヤを配置することで機能します。
 
 ```slint
-// ウィンドウ コンポーネントに追加する (timekeeper.slint と同じ形)。
+export component MainWindow inherits Window {
+	// ... アプリのコンテンツ ...
+	MenuHintPopup { } // メニュー項目の説明を左下に出す
+	TooltipPopup { }  // コントロールのツールチップ(tooltip-text)をカーソル追従で出す
+}
+```
+
+* **MenuHintHub**: `MenuHintPopup` の代わりに、自前のステータスバーにテキスト(`MenuHintHub.text`)を表示することも可能です。
+* **TooltipPopup**: 配置の計算はRust側で行われ、画面端ではみ出さないようポインタ基準で四つ角に調整されます（`SLINT_TOOLTIP_DEBUG=1` で配置デバッグが可能）。
+
+### UIフォントの最適化
+
+OSごとの標準フォント（WindowsならYu Gothic UI、LinuxならGTKのUIフォント設定）を自動適用できます。`.slint` 側で動的バインディングを設定し、Rust側から適用関数を呼びます。
+
+```slint
 in property <string> ui-font-family: "";
 default-font-family: root.ui-font-family;
 ```
 
-ツールチップ等のポップアップ ウィンドウは対象外 (既定のまま)。
-
-### 部品
-
-| 部品 | 主なプロパティ | コールバック | 備考 |
-|---|---|---|---|
-| `Label` | `text` (`&` 記法、下線は常に表示) | `access-key-pressed()` | アクセスキーが押されると発火 |
-| `SmallButton` | `text` / `icon` / `icon-size` / `tooltip-text` / `access-key-underline` / `primary` / `enabled` / `checkable` / `colorize-icon` | `clicked()` | 高さ 22px 級の小ボタン |
-| `ModeToggleButton` | 同上 | `clicked()` | 群から 1 つ選ぶトグル。`checked` で見た目が変わる |
-| `CosmicCheckBox` | `checked` / `checked-color` | (なし) | 見た目だけのチェックボックス。クリック処理は自前実装 |
-| `SpinBox` | `value` (in-out) / `minimum` / `maximum` / `step-size` / `read-only` / `enabled` / `tooltip-text` / `horizontal-alignment` / `has-focus` | `edited(int)` | 上下ボタン縦並び。数値の直接入力も可 |
-| `TextBox` | `text` (in-out) / `placeholder-text` / `placeholder-color` / `read-only` / `enabled` / `font-size` / `font-weight` / `color` / `selection-background-color` / `selection-foreground-color` / `horizontal-alignment` / `input-type` / `input-method-hints` / `tooltip-text` / `has-focus` | `accepted(string)` / `edited(string)` | 1 行テキスト入力。右クリックで Undo / Redo / Cut / Copy / Paste / Select All のコンテキスト メニュー |
-| `TooltipPopup` | (配置するだけ) | (なし) | コントロールの `tooltip-text` を出すカーソル追従レイヤ。ウィンドウ ルートの最後に置く (「コントロールのツールチップ」参照) |
-| `MultiLineTextBox` | `text` (in-out) / `placeholder-text` / `placeholder-color` / `wrap` / `read-only` / `enabled` / `font-size` / `font-weight` / `color` / `selection-background-color` / `selection-foreground-color` / `horizontal-alignment` / `input-method-hints` / `has-focus` / `content-x` / `content-y` / `content-width` / `content-height` | `edited(string)` / `key-pressed` / `key-released` | 複数行テキスト入力 (スクロール付き)。コンテキスト メニューと `select-all()` 等の直API は `TextBox` と共通 |
-| `ScrollView` | `content-x` / `content-y` / `content-width` / `content-height` (in-out) / `visible-width` / `visible-height` / `vertical-scrollbar-policy` / `horizontal-scrollbar-policy` / `mouse-drag-pan-enabled` | `scrolled()` | スクロールビュー (ScrollBar 付き Flickable)。部品の内部で使うほか単体でも可 |
-| `SpinBoxBase` / `SpinBoxButton` | フォント / 選択色 / `icon-width` / `icon-height` | `update-value()` / `increment()` / `decrement()` / `clicked()` | 上級者向けの内部部品 |
-| `TextBoxBase` | 内部 `TextInput` の直プロパティ (`text` / フォント / 選択色 / `margin` など) | `select-all()` / `cut()` / `copy()` / `paste()` / `undo()` / `redo()` / `set-selection-offsets()` | 上級者向けの内部部品 (`TextBox` も `select-all` 等を forwarding する) |
-| `MultiLineTextBoxBase` | 内部 `TextInput` / `ScrollView` の直プロパティ (`scroll-view-padding` / フォント / 選択色 / `content-*` など) | `select-all()` / `cut()` / `copy()` / `paste()` / `set-selection-offsets()` | 上級者向けの内部部品 (`MultiLineTextBox` も forwarding する) |
-| `AppTooltip` | `text` / `padding-h` / `padding-v` | (なし) | 組み込み `Tooltip` 要素 (slint 本体の機能) の中身として使う |
-
-### グローバル
-
-| グローバル | メンバー | 役割 |
-|---|---|---|
-| `MenuAccessKey` | `pure callback parse(title) -> AccessKeyParts` | 描画側の `&` 記法解釈。**アプリは `on_parse` で Rust 実装へ差し込む (必須)** |
-| `AccessKeyHub` | `press(key: string)` / `pressed` | ラベルのアクセスキー通知ハブ |
-| `MenuHintHub` | `text` / `frame-text` / `bar-text` | メニュー項目の説明 (ツールチップ) を集めるハブ (後述) |
-| `MenuOpenHub` | `open` / `close()` / `toggle(index)` | メニューの開閉状態の唯一の情報源。外側クリック捕捉レイヤもこれを読む |
-
-### メニュー項目の説明 (ツールチップ)
-
-メニューの項目に説明を付けると、hover またはキーボード選択中にその説明が
-`MenuHintHub.text` に集まる。バー項目は `description` プロパティ、ドロップ
-ダウンは `descriptions` プロパティ (行ごとの配列) で渡す:
-
-```slint
-file-button := FluentMenuBarItem {
-    entry: { title: root.file-menu-title };
-    description: "CSV の読み込みや出力を行います。";   // hover 中にハブへ報告
-    ...
-}
-file-popup := FluentMenuFrame {
-    items: root.file-items;
-    descriptions: [ "フォルダを選びます。", "CSV に書き出します。", "", "終了します。" ];
-    ...
-}
-```
-
-**出力先は選べる**:
-
-```slint
-// (a) 左下ポップアップ (ステータスバーのないアプリ。ウィンドウのルートの
-//     最後に置く。hover 中だけ左下に浮かぶ)
-MenuHintPopup { }
-
-// (b) ステータスバーのあるアプリ: 自分のステータス行に束ねる
-//     (見た目はアプリ固有なのでライブラリは描かない)
-Text { text: MenuHintHub.text != "" ? MenuHintHub.text : root.own-hint; }
-```
-
-優先順位は「開いているドロップダウンの項目の説明 > バー項目の説明」
-(メニューを開いている間は項目の説明、閉じている間はボタンの説明が出る)。
-
-### コントロールのツールチップ (カーソル追従)
-
-`SmallButton` / `ModeToggleButton` / `SpinBox` / `TextBox` の `tooltip-text`
-は、マウスを重ねて 500ms 後にポインタの近くへ出る。配置は標準 (右下に出し、
-はみ出した分だけずらして収める) ではなく**ポインタを基準に四つ角のいずれか
-を合わせる**: 右 / 下にはみ出すなら左 / 上へ出して (ポインタ = 反対側の角)、
-左右または上下のどちらに置いてもはみ出す場合だけ例外でウィンドウ内に収める。
-隙間はなくポインタが角に密着する。
-
-表示は `TooltipPopup` (アプリのウィンドウ ルートの最後に置く透明レイヤ) が
-担う。**ウィンドウの .slint に 1 行追加が必須** (MenuHintPopup と同じ要領。
-置かないと tooltip-text を設定しても出ない):
-
-```slint
-import { ..., TooltipPopup } from "@ergon_slint_controls";
-
-export component MainWindow inherits Window {
-    ...
-    MenuHintPopup { }
-    TooltipPopup { }   // 最後 (最前面の透明レイヤ。クリックは下へ素通し)
-}
-```
-
-配置の計算はライブラリの Rust 側 (SharedGlobals 経由でウィンドウごとに配線)
-が行う。from_library のグローバルはウィンドウごとの実体なので、複数ウィンド
-ウ (設定ダイアログ等) でも混線しない。アプリ側に必要なコードは上の 1 行だけ。
-
-切り分け用に、環境変数 `SLINT_TOOLTIP_DEBUG=1` を付けるとセンサ / 配置のロ
-グが stderr へ出る (本筋の調査が済んだため、現在はログ出力をコメントアウト
-済み。使うときは `src/lib.rs` の `wire_tooltip_placement` と
-`ui/tooltip.slint` の TooltipSensor 内の「デバッグコード・コメントアウト」
-部分を外す):
-
-```sh
-SLINT_TOOLTIP_DEBUG=1 cargo run --example timekeeper --features modal-dialog
-```
-
-### メニューの開閉と外側クリック / 非活性で閉じる
-
-メニューの開閉状態は `MenuOpenHub` グローバルが唯一の情報源。バー項目と
-ポップアップを束ね、外側クリックはライブラリが閉じる:
-
-```slint
-file-button := FluentMenuBarItem {
-    entry: { title: root.file-menu-title };
-    menu-open: MenuOpenHub.open == 0;
-    hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.open = 0; } }  // 開き替え
-    clicked => { MenuOpenHub.toggle(0); }
-}
-
-// in-window オーバーレイのドロップダウンは、開いている間の外側クリックを
-// ライブラリが捕捉して閉じる (メニューバーより下だけ覆うので、バー項目の
-// hover / 開き替えは生きる。押した瞬間 = down で閉じ、全ボタン共通)。
-// active は既定で MenuOpenHub に追従する。**配置はドロップダウンより手前
-// (先に宣言)** — 後ろに置くとポップアップ項目の hover / クリックを塞ぐ:
-MenuDismissLayer { top: menu-bar.height; }
-```
-
-**ウィンドウの外がクリックされた (非活性になった) ときの閉じ**は、winit フック
-から 1 行ハブへ伝える (フォーカスイベントの観測だけがアプリ側の責任):
-
 ```rust
-if let winit::event::WindowEvent::Focused(false) = event {
-    ui.global::<MenuOpenHub>().invoke_close();
-}
+// Rust側で初期化時に呼ぶだけ
+ergon_slint_controls::ui_font::apply_os_default();
 ```
 
 ---
 
-## Rust ユーティリティ
+## Rust ユーティリティ API リファレンス
 
-### `menu` — `&` 記法のパース
+### `menu` — `&` 記法のパースと発火
 
-```rust
-// 差し込み (main で一度。AccessKeyParts はライブラリがエクスポートする型):
-ui.global::<MenuAccessKey>().on_parse(|title| {
-    let p = parse_access_key(&title);
-    ergon_slint_controls::AccessKeyParts {
-        before: p.before.into(), key: p.key.into(), after: p.after.into(),
-    }
-});
-```
+* `parse_access_key(&str) -> AccessKeyParts` : 文字列からアクセスキーを抽出
+* `access_key_char(&str) -> Option<char>` : 比較用の文字を取得
+* `pressed_char(&winit::event::KeyEvent) -> Option<char>` : 押されたキーの文字を取得 (Releasedは無視)
 
-- `parse_access_key(&str) -> AccessKeyParts` — `{ before, key, after }`。`key` が
-  空ならアクセスキーなし
-- `access_key_char(&str) -> Option<char>` — `&X` の X。Rust 側のキー発火はこれで
-  タイトルと比較する
-- `pressed_char(&winit::event::KeyEvent) -> Option<char>` — 押されたキーの文字
-  (小文字)。**離し (Released) は無視**するので、押下と離しの二重発火がない。
-  winit フックのキー処理はこれ 1 本でよい
+### `dialogs` — ネイティブダイアログ
 
-### ラベルのアクセスキー → 任意の処理
-
-`.slint` 側:
-
-```slint
-Label {
-    text: root.break-title;                       // "休憩の合図 (&R):"
-    access-key-pressed => { spin.focus(); }       // 任意の処理は呼び出し側
-}
-```
-
-Rust 側 (キー処理からハブへ通知すると、一致する Label が発火する):
-
-```rust
-ui.global::<AccessKeyHub>().invoke_press(pressed.to_ascii_uppercase().to_string().into());
-```
-
-ボタン (トグルボタンを含む) 用のアクセスキー機構は slint に無いため、
-`access_key_char(ボタンのタイトル)` をキー処理で読んで callback を発火させる
-(例は examples/timekeeper.rs の「開始 / 停止ボタンのアクセスキー」)。
-
-### `dialogs` — ネイティブ ダイアログ
-
-| 関数 | シグネチャ | 挙動 |
-|---|---|---|
-| `show_message_box` | `(title, text, kind: MessageIcon)` | エラー / 情報。fire-and-forget。Windows = TaskDialog、Linux = 同一プロセス GTK (親をモーダルにブロック)、macOS = NSAlert。失敗時は zenity / kdialog / xmessage、最後は stderr。**1 フレーム遅らせて表示する** (メニューを閉じた直後に呼んでも、閉じた描画が先に行われポップアップが残らない) |
-| `message_box` | `(title, text, buttons: MessageButtons) -> Option<MessageResponse>` | `Ok` / `OkCancel` / `YesNo` / `YesNoCancel`。キャンセル / Esc は `None` |
-| `message_box_custom` | `(title, text, choices: &[&str], default: Option<usize>) -> Option<usize>` | 選択 index。ラベル中の `(&X)` は各 OS のアクセスキー表記に変換 |
-| `prompt_folder` | `(title, initial: Option<&Path>) -> Option<PathBuf>` | フォルダ選択。Windows = IFileOpenDialog、macOS = NSOpenPanel |
-| `capture_dialog_owner` | `(ui: &slint::Window)` | Windows: メイン ウィンドウ HWND を owner として確保。winit フックで 1 回呼ぶ |
-| `dialog_active` / `stale_input_pending` | `() -> bool` | ダイアログ表示中 / 閉じた直後に入力がまだ残っているか |
-| `dialog_push` / `dialog_pop` | `()` | 自前の入力遮断区間を作るときのカウンタ |
-
-`MessageIcon` = `Error | Info`。`MessageButtons` =
-`Ok | OkCancel | YesNo | YesNoCancel`。`MessageResponse` = `Ok | Cancel | Yes | No`。
-
-ダイアログが OS のモーダリティで守られない環境 (別プロセス表示など) の保険
-として、表示中と閉じ直後は winit フックで親の入力を握り潰す。判定関数
-(`should_block_parent_input`) がライブラリ側にあるので、アプリは 1 行だけ:
-
-```rust
-if dialogs::should_block_parent_input(event) { return EventResult::PreventDefault; }
-```
-
-モーダルとは「親を操作できない」こと (ウィンドウ / オーバーレイを問わず)。
-Windows は OS 側のモーダル処理が親の入力を止めるため常時 false を返す。
+| 関数 | シグネチャ / 役割 |
+| --- | --- |
+| `show_message_box` | `(title, text, kind: MessageIcon)` : エラー / 情報の表示 (fire-and-forget)。1フレーム遅延して表示 |
+| `message_box` | `(title, text, buttons) -> Option<MessageResponse>` : Ok / YesNo などの応答を取得 |
+| `message_box_custom` | `(title, text, choices: &[&str], default) -> Option<usize>` : カスタム文字列ボタン |
+| `prompt_folder` | `(title, initial: Option<&Path>) -> Option<PathBuf>` : フォルダ選択ダイアログ |
 
 ### `platform` — OS 固有の窓周り
 
-| 関数 | OS | 内容 |
-|---|---|---|
-| `setup_window(&ui, TitlebarTheme::Light / Dark / System)` | 全 OS | 窓の初期設定。装飾テーマの指定 (内部 UI を fluent-light に固定するなら Light を明示。指定しないと UI と装飾の明暗が分裂する) と、X11 では `_NET_WM_USER_TIME` の設定 (フォーカス盗み取り防止。これが無いと WM は以後開くモーダル子ダイアログの親基準配置・フォーカス付与を行わない)。モーダル子ダイアログのテーマとユーザー操作時刻は `modal_dialog` が既定で親に揃える |
-| `apply_app_icon(&ui, AppIcon)` | 全 OS | アプリ アイコンを OS ごとの正しい方法で適用する (Windows: exe 埋め込みリソース / Linux・macOS: RGBA 画像を winit ウィンドウへ)。アプリは手持ちの情報だけを入れて 1 回呼ぶ。準備できない側は None でよく、エラーにならない |
-| `applied_titlebar_theme()` | 同上 | 現在適用済みのテーマ |
-| `install_window_icon(hwnd, resource_id)` | Windows | exe 埋め込み .ico をタイトルバー / タスクバーへ設定 |
-| `main_window_hwnd(&slint::Window)` | Windows | HWND を取得 |
-| `os_modifier_keys()` | 全 OS | `(shift, ctrl)` の押下状態 (macOS の物理差異を吸収) |
-| `encode_wide(&str)` | Windows | UTF-16 変換 (Win32 API を直接呼ぶアプリ用の補助) |
+* `setup_window(&ui, theme)` : 窓の初期設定。装飾テーマ指定やLinuxのフォーカス盗み取り防止の設定。
+* `apply_app_icon(&ui, AppIcon)` : Windows(exeリソース) / Linux・macOS(RGBA画像) のアプリアイコン適用。
+* `os_modifier_keys()` : macOSの物理差異を吸収した `(shift, ctrl)` の押下状態取得。
 
 ### `cursor` — カーソル制御
 
-| 関数 | 内容 |
-|---|---|
-| `cache_window(Arc<winit::window::Window>)` | 対象 winit ウィンドウを渡す (`ui.window().winit_window().await` で取得) |
-| `set_system_cursor(SystemCursor)` | `Default` / `Crosshair` |
-| `set_custom_cursor(key, || CursorBitmap) -> bool` | 自前カーソル。`CursorBitmap { width, height, hotspot_x, hotspot_y, pixels: Vec<u32> }` (0xAARRGGBB、行優先) |
-| `set_file_cursor(key, &Path) -> bool` | `.cur` ファイルから取り付け (Windows) |
-| `install_override(&slint::Window)` | Windows: `WM_SETCURSOR` でも自前カーソルを維持するようサブクラス化 |
-| `take_non_client_click() -> bool` | Windows: 非クライアント領域をクリックしたか |
+* `cache_window(...)` : 対象のwinitウィンドウを登録
+* `set_custom_cursor(key, || CursorBitmap) -> bool` : 自前画像(RGBA)からのカーソル設定
+* `set_file_cursor(key, &Path) -> bool` : `.cur` ファイルからのカーソル設定 (Windows)
 
-### `gtk` (Linux のみ)
 
-同一プロセス GTK ダイアログの低レイヤ。通常は `dialogs` が内部で使う
-(`show_message_box` の Linux 経路がこれ):
+## `modal_dialog` — モーダルダイアログ制御
 
-| 関数 | 内容 |
-|---|---|
-| `gtk_ready() -> bool` | GTK 初期化に成功したか |
-| `run_dialog_blocking(&dlg) -> ResponseType` | GtkDialog を親をブロックして表示し、後始末 (グラブ解除 / 破棄 / GDK flush / X フォーカス復帰) までを統一して行う。**自前で GtkDialog を出すときは必ずこれを使う** (flush と破棄を省くと、閉じた後に X の入力フォーカスが死ぬ) |
-| `add_button(&dlg, group, label, response)` | ボタン追加 (ラベル中の `(X)` を Alt+X アクセラレータに) |
-
----
-
-## `modal_dialog` — モーダル ダイアログ制御 (feature `modal-dialog`)
-
-Slint ウィンドウを「モーダル子ダイアログ」として出す仕掛け。ダイアログも
-ウィンドウ マネージャの管理下に置き、所有ウィンドウ / ダイアログ型という
-OS 標準のヒントでモーダル性を伝える。WM がヒントを無視する環境でも、
-ライブラリ側が親の入力遮断を担うため「親より前面 + 親を操作不可」は保たれる。
-
-このモジュールは**子ウィンドウ方式とオーバーレイ方式の両方の実装**を含み、
-バイナリへ含めるかどうかだけが feature `modal-dialog` (既定オフ) で決まる。
-有効にすると winit パッチ フォークが必要 (上の `[patch.crates-io]`)。メニュー /
-ネイティブ ダイアログだけを使うアプリは feature を有効にしなくてよい。
-
-**どちらの方式で出すかは、アプリのソースコード内にフラグとなる定数を書いて
-決める** (ライブラリは方式を知らない。子ウィンドウ方式の API とオーバーレイ
-方式の API の呼み分けはアプリの責任で、その分岐に同じ定数を使う):
+ダイアログを「子ウィンドウ」として出すか、「インウィンドウのオーバーレイ」として出すか、**ソースコード上の定数1つで切り替えられます**。これにより、PC向けとモバイル/車載向けでUIの振る舞いを簡単に変更できます。
 
 ```rust
 use ergon_slint_controls::modal_dialog::ModalMode;
 
-/// このアプリのモーダル表示方式 (全 OS で子ウィンドウに固定する例)
+// 例: 全OSで子ウィンドウ方式に固定する
 const MODAL_MODE: ModalMode = ModalMode::ChildWindow;
-
-// 分岐はこの定数に対して行う (const なので分岐はコンパイル時に畳み込まれ、
-// release ビルドでは選ばれない側の実装が残らない)
-if MODAL_MODE.is_in_window_overlay() { ... } else { ... }
 ```
 
-| 方式 | 向き | 定数 |
-|---|---|---|
-| 子ウィンドウ (全 OS) | 別 OS ウィンドウの子ダイアログ (デスクトップ向き) | `const MODAL_MODE: ModalMode = ModalMode::ChildWindow;` |
-| オーバーレイ (全 OS) | メイン ウィンドウ内の暗転オーバーレイ + パネル (モバイル / 車載向き) | `const MODAL_MODE: ModalMode = ModalMode::InWindowOverlay;` |
-| OS で分ける | 例: Windows だけ子ウィンドウ | `const MODAL_MODE: ModalMode = if cfg!(windows) { ModalMode::ChildWindow } else { ModalMode::InWindowOverlay };` |
+定数による分岐のため、使われない方式のコードはコンパイル時に削除され、バイナリ肥大化を防ぎます。
 
-ライブラリは既定値を持たない (方式の選択は完全にアプリ側の判断)。
-
-### 子ウィンドウ方式の呼び出し順
+### 実装手順の例（子ウィンドウ方式）
 
 ```rust
-// 1. main() の最初でバックエンドを準備 (Windows: ダイアログ枠 + 所有ウィンドウ、
-//    X11: _NET_WM_WINDOW_TYPE_DIALOG の生成属性フックを仕込む)
+// 1. バックエンドの準備
 ergon_slint_controls::modal_dialog::prepare_backend()?;
 
-// 2. スロットを用意 (開いていれば Some、閉じたら None を管理)
+// 2. スロットの準備
 let slot: ergon_slint_controls::modal_dialog::ModalSlot = Default::default();
 
-// 3. 開く: ダイアログのラッパ型に ModalChild (window / show / hide / accept /
-//    cancel の 5 メソッド) を実装しておく
-#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
-ergon_slint_controls::modal_dialog::mark_next_window_as_child_dialog();   // 次のウィンドウ生成が子ダイアログ
+// 3. ダイアログを開く
+// 次のウィンドウ生成を子ダイアログとしてマーク
+ergon_slint_controls::modal_dialog::mark_next_window_as_child_dialog();
 ergon_slint_controls::modal_dialog::open_child_modal(&slot, &main, Rc::new(ExportDialog(dlg)));
-//    表示・Esc/Enter の読み替え (accept/cancel へ転送)・中央配置・破棄はライブラリ
 
-// 4. 閉じる (OK / キャンセル ハンドラから。hide ではなく破棄される)
+// 4. ダイアログを閉じる
 ergon_slint_controls::modal_dialog::close_child_modal(&slot, main.window());
-
-// 5. Windows: メイン ウィンドウ生成後に owner を登録 (1 回でよい)
-ergon_slint_controls::modal_dialog::note_owner_window(winit_window);
 ```
 
-中央配置の決定責任は OS の文化に従う: Windows は OS が配置しないため winit
-フォークが表示直前に owner 中央へ配置し、Linux は WM が transient を親基準に
-配置する (ライブラリは座標を扱わない)。
-
-### オーバーレイ方式の呼び出し順
+### 実装手順の例（オーバーレイ方式）
 
 ```rust
-// パネルのホスト。表示の切り替えと確定 / キャンセルの転送だけを書く:
-impl ergon_slint_controls::modal_dialog::OverlayHost for ExportPanelHost {
-    fn is_open(&self) -> bool { /* パネル表示中か */ }
-    fn open(&self) { /* パネルを表示 */ }
-    fn close(&self) { /* パネルを隠す */ }
-    fn accept(&self) { /* 確定 (Enter / OK) */ }
-    fn cancel(&self) { /* キャンセル (Esc) */ }
-    fn will_open(&self) {}   // 省略可
-}
-ergon_slint_controls::modal_dialog::open_overlay(&host);     // 開く (二重オープン ガード付き)
-ergon_slint_controls::modal_dialog::close_overlay(&host);    // 閉じる
-```
+// OverlayHost トレイトを実装したラッパーを作成し、開閉を行う
+ergon_slint_controls::modal_dialog::open_overlay(&host);
+ergon_slint_controls::modal_dialog::close_overlay(&host);
 
-Esc / Enter の転送は winit フックから:
-
-```rust
+// winit フックでキーイベントを転送
 if ergon_slint_controls::modal_dialog::overlay_key_filter(&*host, code, key_event.repeat) {
-    return EventResult::PreventDefault;   // オーバーレイが消費した
+	return EventResult::PreventDefault;
 }
 ```
-
-`ModalSession` / `WeakModalSlot` / `dismiss_modal_dialog` / `enforce_modal_styles`
-は高度な制御用 (自前でライフサイクルを管理する場合)。
 
 ---
 
-## キーボード処理の土台
+## キーボード処理とイベントフックの土台
 
-キー処理は slint の winit フックで行う (`unstable-winit-030`):
+キーボード処理やマウスの非活性クリック（メニューを閉じる等）は、Slint の `winit` フック (`unstable-winit-030`) で一括管理します。
 
 ```rust
 use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
 
 ui.window().on_winit_window_event(move |_win, event| -> EventResult {
-    if let winit::event::WindowEvent::ModifiersChanged(mods) = event {
-        // Alt 押下中はメニューのアクセスキーに下線を表示する
-        ui.set_menu_alt_held(mods.state().alt_key());
-    }
-    if let winit::event::WindowEvent::KeyboardInput { event: key_event, .. } = event {
-        // physical_key: KeyCode / logical_key: 押された文字
-    }
-    EventResult::Propagate
+	// ネイティブダイアログ表示中の親ウィンドウ入力ブロック
+	if dialogs::should_block_parent_input(event) {
+		return EventResult::PreventDefault;
+	}
+
+	// Alt キー押下時のメニュー下線表示
+	if let winit::event::WindowEvent::ModifiersChanged(mods) = event {
+		ui.set_menu_alt_held(mods.state().alt_key());
+	}
+	
+	// ウィンドウ外クリック(非活性化)でメニューを閉じる
+	if let winit::event::WindowEvent::Focused(false) = event {
+		ui.global::<MenuOpenHub>().invoke_close();
+	}
+
+	EventResult::Propagate
 });
+
 ```
 
-フル実装 (Alt+文字でメニュー開閉、有効行だけを辿る上下移動、Enter / Esc、
-開閉中の項目アクセスキー、ラベルとボタンのアクセスキー) は
-**examples/timekeeper.rs** を参照。
-
-### メニュー項目の処理: 即時 or 再描画後に
-
-メニューを閉じて**ネイティブ ダイアログを出す処理**は、同ターンで実行すると
-閉じた描画が行われないままダイアログのネストしたループに入り、ポップアップが
-残って見える。`menu::defer_action` は再描画を要求してから処理を回す:
+**メニュー処理の遅延実行 (`defer_action`)**
+メニューを閉じた直後にモーダルダイアログ等でブロックする処理を行うと、メニューが画面に残ったままになることがあります。再描画後に処理を回すために `defer_action` を使用します。
 
 ```rust
 ui.on_menu_item_clicked(move |id| {
-    match id.as_str() {
-        // 状態を変えるだけの即時処理 → defer しない (閉じた更新と同じ
-        // フレームにまとまり、表示更新は 1 回で済む)
-        "--toggle" => toggle_something(),
-        // ブロックする処理 (ダイアログ / 設定画面) → 閉じた描画の後に
-        "--settings" => menu::defer_action(&ui, move || open_settings(...)),
-        _ => {}
-    }
+	match id.as_str() {
+		"--settings" => menu::defer_action(&ui, move || open_settings()),
+		_ => {}
+	}
 });
+
 ```
 
-## バージョンの固定と更新
+## バージョンの固定と更新に関する注意
 
-- `Cargo.toml` の `tag = "v..."` でバージョンを固定する
-- 更新するときは **タグの書き換え + `cargo update -p ergon-slint-controls`**
-  (ロックの更新を忘れると、タグを変えても古いビルドのままになる)
-- `modal-dialog` feature を使う場合、winit パッチ フォークのタグは
-  ライブラリが要求するもの (`v0.30.13-modal.10`) に合わせる
+* `Cargo.toml` の `tag = "v..."` でバージョンを固定してください。
+* 更新時はタグの書き換えに加え、`cargo update -p ergon-slint-controls` を実行してロックファイルを更新してください。
+* `modal-dialog` 機能を利用する場合、winit パッチフォークのタグはライブラリが指定するバージョンに合わせてください。
 
 ## ライセンス
 
-Slint の公式ウィジェット (menu-base / menu / fluent) を改変して含む部分は
-SPDX 表記のとおり:
-`GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0`。
-それ以外の部分はリポジトリのライセンス ファイルを参照。
+Slint の公式ウィジェット (menu-base / menu / fluent) を改変して含む部分は SPDX 表記の通り `GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0` となります。それ以外の部分はアケネＪに帰属しAGPLv3となります。
+
+さあ、みんなでモダンかつ扱いやすいGUIを構築しましょう。
