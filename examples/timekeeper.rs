@@ -50,6 +50,31 @@ fn menu_action(menu: i32, row: i32) -> Option<String> {
 	}
 }
 
+/// 計測中の終了確認。メニューの「終了」と閉じるボタン (CloseRequested) の
+/// 共通処理。終了してよいなら true を返す (計測中でなければ即 true)。確認
+/// ダイアログの既定 (Enter) はキャンセル。
+fn confirm_exit_while_running(ui: &TimeKeeperWindow, start_stop: &dyn Fn()) -> bool {
+	if !ui.get_running() {
+		return true;
+	}
+	match ergon_slint_controls::dialogs::message_box_custom(
+		"終了の確認",
+		"計測が実行中です。どうしますか？",
+		&["停止して終了 (&Q)", "破棄して終了 (&D)", "キャンセル"],
+		Some(2),   // 既定 (Enter) はキャンセル
+	) {
+		Some(0) => {
+			start_stop();
+			true
+		}
+		Some(1) => {
+			ui.set_running(false);
+			true
+		}
+		_ => false,
+	}
+}
+
 /// メニューコマンドの実行 (ポップアップを閉じてから処理する)。
 fn apply_menu_action(ui: &TimeKeeperWindow, action: &str) {
 	ui.global::<MenuOpenHub>().invoke_close();
@@ -517,6 +542,7 @@ fn main() -> Result<(), slint::PlatformError> {
 		}
 	});
 	let weak = ui.as_weak();
+	let start_stop = start_stop.clone();
 	ui.window().on_winit_window_event(move |_win, event| -> EventResult {
 		// モーダル ダイアログ (親を操作できない) の表示中は親への入力を
 		// 握り潰す。判定はライブラリへ委譲。
@@ -532,6 +558,17 @@ fn main() -> Result<(), slint::PlatformError> {
 			if let Some(ui) = weak.upgrade() {
 				ui.global::<MenuOpenHub>().invoke_close();
 			}
+		}
+
+		// 閉じるボタン: 計測中ならメニューの「終了」と同じ確認ダイアログを出
+		// す (キャンセルなら閉じるのを止める)。
+		if let winit::event::WindowEvent::CloseRequested = event {
+			let Some(ui) = weak.upgrade() else { return EventResult::Propagate };
+			if confirm_exit_while_running(&ui, start_stop.as_ref()) {
+				slint::quit_event_loop().ok();
+				return EventResult::Propagate;
+			}
+			return EventResult::PreventDefault;
 		}
 
 		let winit::event::WindowEvent::KeyboardInput { event: key_event, .. } = event else {
