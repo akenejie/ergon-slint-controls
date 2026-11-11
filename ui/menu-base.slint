@@ -86,6 +86,11 @@ export global MenuHintHub {
 	in-out property <string> frame-text: "";
 	// バー項目 (FluentMenuBarItem) が報告する説明。メニューを開いたボタン。
 	in-out property <string> bar-text: "";
+	// ヒントの表示先モード。true (既定) = MenuHintPopup (画面左下のポップアッ
+	// プ) に表示する。false = ポップアップを出さず、text をアプリのステータ
+	// ス行へ任せる (アプリは text を束ね、ステータスバーの表示切替に追従し
+	// てこの値を入れ替える)。
+	in-out property <bool> popup-enabled: true;
 	// 表示すべき説明。ドロップダウン項目を優先する (メニューを開いている間は
 	// 項目の説明、閉じている間はボタンの説明が出る)。空 = 表示すべきなし。
 	out property <string> text: frame-text != "" ? frame-text : bar-text;

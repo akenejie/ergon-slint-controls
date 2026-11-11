@@ -25,7 +25,7 @@
 // クレート内にあるため同じコンパイル単位で直接 import しているが、API の形は
 // 同じ (README の「参照方法の要点」を参照)。
 
-use ergon_slint_controls::{MenuKeyControl, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
+use ergon_slint_controls::{MenuHintHub, MenuKeyControl, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
 use ergon_slint_controls::modal_dialog::{ModalMode, OverlayHost as _};
 
 /// このサンプルのモーダル表示方式。全 OS (win/linux/macos) 共に子ウィンドウ
@@ -404,7 +404,13 @@ fn main() -> Result<(), slint::PlatformError> {
 			// まとまる (表示更新は 1 回だけ)。
 			match id.as_str() {
 				"--start" | "--stop" => start_stop(),
-				"--status-bar" => ui.set_status_bar_visible(!ui.get_status_bar_visible()),
+				"--status-bar" => {
+					ui.set_status_bar_visible(!ui.get_status_bar_visible());
+					// メニューヒントの表示先を追従させる (ステータス行 / 左下
+					// ポップアップ)。
+					ui.global::<MenuHintHub>()
+						.set_popup_enabled(!ui.get_status_bar_visible());
+				}
 				"--clear" => {
 					// 破壊的な操作: カスタム ボタンのメッセージ ボックスで確認
 					// する (message_box_custom: 押されたボタンの choices 添字が
@@ -611,6 +617,9 @@ fn main() -> Result<(), slint::PlatformError> {
 	// 各ウィンドウの既定フォントを OS 標準の UI フォントへ揃える (Windows:
 	// Yu Gothic UI / Linux: デスクトップ環境の設定 / macOS: 既定のまま)。
 	ergon_slint_controls::ui_font::apply_os_default();
+	// メニューヒントの表示先: 既定はステータスバー表示 → ステータス行 (ポッ
+	// プアップ無効)。トグルで切替わる。
+	ui.global::<MenuHintHub>().set_popup_enabled(!ui.get_status_bar_visible());
 
 	ui.run()
 }

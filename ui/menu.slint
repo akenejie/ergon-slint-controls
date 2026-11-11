@@ -289,7 +289,8 @@ export component MenuHintPopup inherits Rectangle {
 	y: 0;
 	width: 100%;
 	height: 100%;
-	visible: MenuHintHub.text != "";
+	// ステータス行へ出すアプリ (popup-enabled = false) では出さない。
+	visible: MenuHintHub.popup-enabled && MenuHintHub.text != "";
 
 	Rectangle {
 		x: 3px;

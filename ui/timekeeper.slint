@@ -10,7 +10,7 @@
 // 注: ライブラリの import 文はファイル内で 1 文にまとめる (生成コードが
 // import 文の数だけ共有グローバル群のフィールドを重複生成するため)。
 import {
-	MenuAccessKey, AccessKeyHub, MenuOpenHub, MenuKeyControl, AccessKeyLabel,
+	MenuAccessKey, AccessKeyHub, MenuOpenHub, MenuKeyControl, MenuHintHub, AccessKeyLabel,
 	FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView,
 	MenuHintPopup, MenuDismissLayer, TooltipPopup,
 	Label, SmallButton, ModeToggleButton, CosmicCheckBox, SpinBox, TextBox,
@@ -533,7 +533,9 @@ export component TimeKeeperWindow inherits Window {
 			font-size: 0.8rem;
 			color: #666;
 			overflow: elide;
-			text: root.hint-text;
+			// メニューのヒント (MenuHintHub.text) を優先し、無ければアプリ
+			// のヒント (書き出し完了などの操作結果) を出す。
+			text: MenuHintHub.text != "" ? MenuHintHub.text : root.hint-text;
 		}
 	}
 

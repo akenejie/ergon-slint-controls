@@ -138,7 +138,7 @@ Rust 側のキー発火も同じ 1 本の文字列から同じ関数で読むた
 | 部品 | 主なプロパティ / コールバック | 役割 |
 |---|---|---|
 | `FluentMenuBarImpl` | (子に `FluentMenuBarItem` を並べる) | メニューバー |
-| `FluentMenuBarItem` | `entry: MenuEntry` / `menu-open` / `access-key-underline` / `description` / `clicked()` / `hovered()` / `hover-description` | バー項目。`description` は hover 中に `MenuHintHub` へ報告される |
+| `FluentMenuBarItem` | `entry: MenuEntry` / `menu-open` / `access-key-underline` / `description` / `clicked()` / `hovered()` | バー項目。`description` は hover 中に `MenuHintHub` へ報告される |
 | `FluentMenuFrame` | `items: [MenuItemView]` / `current-row` / `descriptions: [string]` / `access-key-underline` / `activated(int)` / `content-width` / `content-height` / `layout-min-width` | ドロップダウン本体。`descriptions` は行ごとの説明 (hover / キーボード選択中の行が `MenuHintHub` へ報告される) |
 | `MenuItemView` | `entry: MenuEntry` / `shortcut-text: string` | 項目 1 行分 |
 | `MenuEntry` | `title` / `shortcut` / `checkable` / `checked` / `enabled` / `is-separator` | 項目データ。`&` 記法は `title` に書く |
