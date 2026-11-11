@@ -166,26 +166,21 @@ fn detach_x11_custom_cursor() {
 	}
 }
 
-/// 外しているカスタムカーソルを属性へ再適用する (資源は生きているので属性
-/// 書き込み 1 発)。
+/// attach の本体 (X11_CURSOR をロック済みの呼び出し側から使う)。
 #[cfg(target_os = "linux")]
-fn attach_x11_custom_cursor() {
-	if let Ok(mut slot) = X11_CURSOR.lock() {
-		if let Some(st) = slot.as_mut() {
-			if !st.attached {
-				let _ = xproto::change_window_attributes(
-					&st.conn,
-					st.target,
-					&xproto::ChangeWindowAttributesAux {
-						cursor: Some(st.cursor),
-						..Default::default()
-					},
-				)
-				.map(|c| c.ignore_error());
-				let _ = st.conn.flush();
-				st.attached = true;
-			}
-		}
+fn attach_state(st: &mut X11CursorState) {
+	if !st.attached {
+		let _ = xproto::change_window_attributes(
+			&st.conn,
+			st.target,
+			&xproto::ChangeWindowAttributesAux {
+				cursor: Some(st.cursor),
+				..Default::default()
+			},
+		)
+		.map(|c| c.ignore_error());
+		let _ = st.conn.flush();
+		st.attached = true;
 	}
 }
 
@@ -354,14 +349,18 @@ fn start_leave_pump() {
 #[cfg(target_os = "linux")]
 pub fn set_custom_cursor(key: i64, build: impl FnOnce() -> CursorBitmap) -> bool {
 	let mut slot = X11_CURSOR.lock().unwrap_or_else(|e| e.into_inner());
-	if let Some(st) = slot.as_ref() {
-		if st.key == key {
-			// 同一キー: 資源は生きているので、外れている場合 (ポインタが窓を
-			// 出ていた) は属性書き込み 1 発で再適用する (再生成しない)。
-			attach_x11_custom_cursor();
-			SYSTEM_STATE.store(STATE_CUSTOM, std::sync::atomic::Ordering::Relaxed);
-			return true;
+	if slot.as_ref().is_some_and(|st| st.key == key) {
+		// 同一キー: 資源は生きているので、外れている場合 (ポインタが窓を
+		// 出ていた) は属性書き込み 1 発で再適用する (再生成しない)。
+		// 注意: ここは X11_CURSOR を**ロック中**なので attach_x11_custom_cursor
+		// (内部で再ロック) を呼べない。std::sync::Mutex は再入不可で、同一
+		// スレッドの再ロック待ちでフリーズする (実測: じかん君でドラッグを
+		// 終えた後の 2 回目のドラッグ開始時にフリーズ)。
+		if let Some(st) = slot.as_mut() {
+			attach_state(st);
 		}
+		SYSTEM_STATE.store(STATE_CUSTOM, std::sync::atomic::Ordering::Relaxed);
+		return true;
 	}
 	// **古いカーソルを先に解放する**。逆の順 (新しく適用してから古いのを解
 	// 放) だと、解放処理の cursor: 0 が新しいカーソルを上書きして消してし
