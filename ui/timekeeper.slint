@@ -340,7 +340,7 @@ export component TimeKeeperWindow inherits Window {
 	in-out property <[MenuItemView]> file-items: [
 		{ entry: { title: "ログの保存先フォルダ... (&O)", enabled: true } },
 		{ entry: { title: "CSV を書き出す (&E)...", enabled: root.sessions.length > 0 } },
-		{ entry: { title: "ステータスバーを表示 (&S)", checkable: true, checked: root.status-bar-visible } },
+		{ entry: { title: "ステータスバーを表示 (&S)", enabled: true, checkable: true, checked: root.status-bar-visible } },
 		{ entry: { is-separator: true, enabled: false } },
 		{ entry: { title: "終了 (&X)", enabled: true }, shortcut-text: "Alt+F4" },
 	];
