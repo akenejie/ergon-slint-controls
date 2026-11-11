@@ -114,7 +114,7 @@ export component TimeKeeperWindow inherits Window {
 			access-key-underline: MenuAccessKey.alt-held; // Alt 押下中だけ下線 (Windows 風)
 			menu-open: MenuOpenHub.open == 0;
 			description: "ログの保存先と CSV 書き出し。";
-			hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.open = 0; } }
+			hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.switch-to(0); } }
 			clicked => { MenuOpenHub.toggle(0); }
 		}
 
@@ -123,7 +123,7 @@ export component TimeKeeperWindow inherits Window {
 			access-key-underline: MenuAccessKey.alt-held;
 			menu-open: MenuOpenHub.open == 1;
 			description: "計測の開始 / 停止。";
-			hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.open = 1; } }
+			hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.switch-to(1); } }
 			clicked => { MenuOpenHub.toggle(1); }
 		}
 
@@ -132,7 +132,7 @@ export component TimeKeeperWindow inherits Window {
 			access-key-underline: MenuAccessKey.alt-held;
 			menu-open: MenuOpenHub.open == 2;
 			description: "操作方法とバージョン情報。";
-			hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.open = 2; } }
+			hovered => { if (MenuOpenHub.open >= 0) { MenuOpenHub.switch-to(2); } }
 			clicked => { MenuOpenHub.toggle(2); }
 		}
 	}

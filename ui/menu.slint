@@ -218,9 +218,16 @@ export component FluentMenuFrame inherits MenuFrameBase {
 	callback activated(int);
 
 	// 現在の行の説明を MenuHintHub へ報告する。
+	// frame-text は全フレームで共有されるため、**表示中のフレームだけ**を報
+	// 告する (非表示フレームの報告は、selected-row の双方向同期で発火する他
+	// フレーム分のトラッカーが表示中フレームのヒントを消す原因になる — 実測:
+	// ヒントが出るときと出ないときがある)。
 	function report-hint() {
-		MenuHintHub.frame-text = self.visible
-			&& root.current-row >= 0 && root.current-row < descriptions.length
+		if (!self.visible) {
+			return;
+		}
+		MenuHintHub.frame-text = root.current-row >= 0
+			&& root.current-row < descriptions.length
 			? descriptions[root.current-row] : "";
 	}
 	changed current-row => { report-hint(); }

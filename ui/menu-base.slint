@@ -48,17 +48,30 @@ export global MenuOpenHub {
 	in-out property <int> selected-row: -1;
 
 	// 開いているメニューを閉じる (外側クリック / ウィンドウの非活性など)。
-	// Alt 押下状態もここで落とす (非活性時に Alt の離しを受け取れないため)。
+	// Alt 押下状態とメニュー項目のヒントもここで落とす (非表示フレームは報
+	// 告しないため、閉じる側の明示的なクリアが必要)。
 	public function close() {
 		self.open = -1;
 		self.selected-row = -1;
 		MenuAccessKey.alt-held = false;
+		MenuHintHub.frame-text = "";
 	}
 
 	// 項目のクリック。同じ項目が開いていれば閉じ、そうでなければ開く。
+	// 開く/閉じるのどちらも、前のヒントを引き継がないようクリアする。
 	public function toggle(index: int) {
 		self.open = self.open == index ? -1 : index;
 		self.selected-row = -1;
+		MenuHintHub.frame-text = "";
+	}
+
+	// 開いているメニューを別のバー項目へ切り替える (メニュー表示中のバー項
+	// 目 hover 用)。選択行とヒントをリセットする (前のメニューの行 index /
+	// 説明を引き継がない)。
+	public function switch-to(index: int) {
+		self.open = index;
+		self.selected-row = -1;
+		MenuHintHub.frame-text = "";
 	}
 }
 
