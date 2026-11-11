@@ -25,7 +25,7 @@
 // クレート内にあるため同じコンパイル単位で直接 import しているが、API の形は
 // 同じ (README の「参照方法の要点」を参照)。
 
-use ergon_slint_controls::{MenuHintHub, MenuKeyControl, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow};
+use ergon_slint_controls::{MenuHintHub, MenuKeyControl, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow, TooltipHub};
 use ergon_slint_controls::modal_dialog::{ModalMode, OverlayHost as _};
 
 /// このサンプルのモーダル表示方式。全 OS (win/linux/macos) 共に子ウィンドウ
@@ -406,9 +406,11 @@ fn main() -> Result<(), slint::PlatformError> {
 				"--start" | "--stop" => start_stop(),
 				"--status-bar" => {
 					ui.set_status_bar_visible(!ui.get_status_bar_visible());
-					// メニューヒントの表示先を追従させる (ステータス行 / 左下
-					// ポップアップ)。
+					// メニューヒント / コントロールツールチップの表示先を追従
+					// させる (ステータス行 / 左下ポップアップ)。
 					ui.global::<MenuHintHub>()
+						.set_popup_enabled(!ui.get_status_bar_visible());
+					ui.global::<TooltipHub>()
 						.set_popup_enabled(!ui.get_status_bar_visible());
 				}
 				"--clear" => {
@@ -617,9 +619,10 @@ fn main() -> Result<(), slint::PlatformError> {
 	// 各ウィンドウの既定フォントを OS 標準の UI フォントへ揃える (Windows:
 	// Yu Gothic UI / Linux: デスクトップ環境の設定 / macOS: 既定のまま)。
 	ergon_slint_controls::ui_font::apply_os_default();
-	// メニューヒントの表示先: 既定はステータスバー表示 → ステータス行 (ポッ
-	// プアップ無効)。トグルで切替わる。
+	// メニューヒント / コントロールツールチップの表示先: 既定はステータス
+	// バー表示 → ステータス行 (両ポップアップ無効)。トグルで切替わる。
 	ui.global::<MenuHintHub>().set_popup_enabled(!ui.get_status_bar_visible());
+	ui.global::<TooltipHub>().set_popup_enabled(!ui.get_status_bar_visible());
 
 	ui.run()
 }

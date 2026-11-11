@@ -49,6 +49,12 @@ export global TooltipHub {
 	in-out property <length> cursor-y: 0px;
 	// place が配線済みか (未配線なら表示しない)。
 	in-out property <bool> active: false;
+	// ヒントの表示先モード。true (既定) = TooltipPopup (カーソル位置のポップ
+	// アップ) に表示する。false = ポップアップを出さず、text をアプリのステ
+	// ータス行へ任せる (アプリは text を束ね、ステータスバーの表示切替に追
+	// 従してこの値を入れ替える)。ステータス行モードでは遅延なしで即時に表示
+	// する (遅延はカーソル位置のポップアップが目障りであるための配慮)。
+	in-out property <bool> popup-enabled: true;
 	// 切り分け用ログ (SLINT_TOOLTIP_DEBUG=1 で Rust 側から有効化)。
 	in-out property <bool> debug-log: false;
 
@@ -81,9 +87,10 @@ export component TooltipSensor inherits TouchArea {
 	private property <length> cursor-y: self.absolute-position.y + self.mouse-y;
 
 	Timer {
-		// 標準 Tooltip の既定遅延と同じ 500ms。
+		// 標準 Tooltip の既定遅延と同じ 500ms。ポップアップモードでのみ走る
+		// (ステータス行モードは changed has-hover で即時に出す)。
 		interval: 500ms;
-		running: root.has-hover && !root.shown && root.tooltip-text != "";
+		running: TooltipHub.popup-enabled && root.has-hover && !root.shown && root.tooltip-text != "";
 		triggered => {
 			// (デバッグコード・コメントアウト) タイマー発火の確認用。使うと
 			// きはコメントを外す (TooltipHub.debug-log を SLINT_TOOLTIP_DEBUG=1
@@ -105,7 +112,14 @@ export component TooltipSensor inherits TouchArea {
 		// if (TooltipHub.debug-log) {
 		// 	debug("tooltip: hover 変化");
 		// }
-		if (!self.has-hover) {
+		if (self.has-hover) {
+			// ステータス行モード: 遅延なしで即時にヒントを出す (ポップアップ
+			// は出ない。ステータス行は目障りでないため遅延が不要)。
+			if (!TooltipHub.popup-enabled && root.tooltip-text != "") {
+				TooltipHub.text = root.tooltip-text;
+				root.shown = true;
+			}
+		} else {
 			root.shown = false;
 			// 自分の報告がまだ表示中のときだけ消す (隣のコントロールへ hover
 			// が移った場合、移動先の報告を消さないため)。
@@ -138,7 +152,7 @@ export component TooltipPopup inherits Rectangle {
 	height: 600px;
 	min-width: 0px;
 	min-height: 0px;
-	visible: TooltipHub.active && TooltipHub.text != "";
+	visible: TooltipHub.active && TooltipHub.popup-enabled && TooltipHub.text != "";
 
 	i-panel := Rectangle {
 		x: TooltipHub.place(TooltipHub.cursor-x, TooltipHub.cursor-y, self.width, self.height).px;

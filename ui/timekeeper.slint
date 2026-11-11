@@ -12,7 +12,7 @@
 import {
 	MenuAccessKey, AccessKeyHub, MenuOpenHub, MenuKeyControl, MenuHintHub, AccessKeyLabel,
 	FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView,
-	MenuHintPopup, MenuDismissLayer, TooltipPopup,
+	MenuHintPopup, MenuDismissLayer, TooltipPopup, TooltipHub,
 	Label, SmallButton, ModeToggleButton, CosmicCheckBox, SpinBox, TextBox,
 	TooltipSensor,
 } from "@ergon_slint_controls";
@@ -533,9 +533,13 @@ export component TimeKeeperWindow inherits Window {
 			font-size: 0.8rem;
 			color: #666;
 			overflow: elide;
-			// メニューのヒント (MenuHintHub.text) を優先し、無ければアプリ
-			// のヒント (書き出し完了などの操作結果) を出す。
-			text: MenuHintHub.text != "" ? MenuHintHub.text : root.hint-text;
+			// 表示の優先度: メニューのヒント (MenuHintHub.text) → コントロー
+			// ルのツールチップ (TooltipHub.text) → アプリのヒント (書き出し
+			// 完了などの操作結果)。フォールバックは束ねるだけで復元も自動
+			// (ヒント側は hint-text を書き換えないため、表示中に hint-text
+			// が更新されても消えた時に新しい値へ自然に戻る)。
+			text: MenuHintHub.text != "" ? MenuHintHub.text
+				: (TooltipHub.text != "" ? TooltipHub.text : root.hint-text);
 		}
 	}
 
