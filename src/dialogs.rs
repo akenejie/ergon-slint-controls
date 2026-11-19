@@ -21,10 +21,10 @@ use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 #[cfg(windows)]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-	CallNextHookEx, GetClassNameW, GetWindowRect, LoadIconW, MessageBoxW, SetWindowPos,
-	SetWindowsHookExW, UnhookWindowsHookEx, HCBT_ACTIVATE, HHOOK, IDCANCEL, IDI_INFORMATION,
-	IDNO, IDOK, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_OK, SWP_NOACTIVATE, SWP_NOSIZE,
-	SWP_NOZORDER, WH_CBT,
+	CallNextHookEx, GetClassNameW, GetWindowRect, MessageBoxW, SetWindowPos, SetWindowsHookExW,
+	UnhookWindowsHookEx, HCBT_ACTIVATE, HHOOK, IDCANCEL, IDNO, IDOK, IDYES, MB_ICONERROR,
+	MB_ICONINFORMATION, MB_ICONQUESTION, MB_OK, MB_OKCANCEL, MB_YESNO, MB_YESNOCANCEL,
+	SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WH_CBT,
 };
 
 // The main window HWND, captured once the native window exists. Passing it as
@@ -45,59 +45,6 @@ pub fn capture_dialog_owner(ui: &slint::Window) {
 #[cfg(not(windows))]
 pub fn capture_dialog_owner(_ui: &slint::Window) {}
 
-/// TaskDialogIndirect の共通呼び出し。`hwndParent` (crate::owner = 親ウィンドウ)
-/// を渡すと、OS がタスクダイアログを「親ウィンドウの中央」に配置する
-/// (TaskDialog の既定動作。TDF_POSITION_RELATIVE_TO_WINDOW を付けない場合)。
-/// 位置はアプリ側で一切計算しない。押されたボタンの ID を返す。
-///
-/// メッセージ本文は `pszContent` (本文用 = 黒字) に渡す。`pszMainInstruction`
-/// は TaskDialog の「大きな見出し」用のスロットで、テーマによって青字で描かれる。
-/// そこに本文を渡すと全体が青い大きな文字になってしまうため、ここは空のままに
-/// して本文を黒字の detail スロットへ入れる。
-#[cfg(windows)]
-fn task_dialog_center_parent(
-	title: &str,
-	message: &str,
-	icon: *mut core::ffi::c_void,
-	common_buttons: i32,
-	default_button: i32,
-) -> i32 {
-	use windows_sys::Win32::UI::Controls::{
-		TaskDialogIndirect, TASKDIALOGCONFIG, TASKDIALOGCONFIG_0, TDF_ALLOW_DIALOG_CANCELLATION,
-		TDF_POSITION_RELATIVE_TO_WINDOW, TDF_USE_HICON_MAIN,
-	};
-	let title_w = encode_wide(title);
-	let message_w = encode_wide(message);
-	let mut config = TASKDIALOGCONFIG::default();
-	config.cbSize = std::mem::size_of::<TASKDIALOGCONFIG>() as u32;
-	config.hwndParent = crate::owner::current_owner_hwnd();
-	// TDF_POSITION_RELATIVE_TO_WINDOW が「hwndParent 基準でセンタリング」を
-	// 有効にする。これを付けない場合、OS は hwndParent を渡していても
-	// 「モニタ基準」でダイアログを配置する (画面中央になる)。
-	config.dwFlags =
-		TDF_POSITION_RELATIVE_TO_WINDOW | TDF_USE_HICON_MAIN | TDF_ALLOW_DIALOG_CANCELLATION;
-	config.pszWindowTitle = title_w.as_ptr();
-	// 大きな青字の見出しスロットは空、本文は黒字の detail スロットへ。
-	config.pszMainInstruction = std::ptr::null();
-	config.pszContent = message_w.as_ptr();
-	config.Anonymous1 = TASKDIALOGCONFIG_0 { hMainIcon: icon };
-	config.dwCommonButtons = common_buttons;
-	config.nDefaultButton = default_button;
-	let mut result = 0i32;
-	let hr = unsafe {
-		TaskDialogIndirect(
-			&config,
-			&mut result,
-			std::ptr::null_mut(),
-			std::ptr::null_mut(),
-		)
-	};
-	if hr == 0 {
-		result
-	} else {
-		default_button
-	}
-}
 
 /// エラー / 情報のネイティブメッセージボックスのアイコン種別。エラーと情報で
 /// 関数を分けず、この種別だけを切り替えて 1 つの関数に統一する。
@@ -542,41 +489,57 @@ pub enum MessageResponse {
 }
 
 /// OS 標準のモーダルメッセージボックス。`buttons` でボタン構成を選び、押された
-/// ボタンを返す。ラベルは各 OS の言語に任せる (カスタム文言が必要なら
-/// `message_box_custom` を使う)。閉じられた / 表示できないときは `None`。
+/// ボタンを返す。ラベルは各 OS の言語に任せる (カスタム文言が必要な場合は
+/// `message_box_custom` を使う)。閉じられた / 表示できない場合は `None`。
 /// `show_message_box` (fire-and-forget) と違い回答までブロックする。
+///
+/// Windows では `MessageBoxW` を使う。本文の長さに合わせてウィンドウ幅が
+/// 決まり、ボタンは OS 標準のもの (はい / いいえ など) が表示される。
+/// `YesNo` / `OkCancel` / `YesNoCancel` は疑問符アイコン、`Ok` は情報アイコン。
+/// 親ウィンドウ基準での中央配置は `show_message_box` と同じ CBT フックで
+/// 行う (オーナーは所有者スタックの先頭)。
 #[cfg(windows)]
 pub fn message_box(title: &str, text: &str, buttons: MessageButtons) -> Option<MessageResponse> {
-	use windows_sys::Win32::UI::Controls::{
-		TDCBF_CANCEL_BUTTON, TDCBF_NO_BUTTON, TDCBF_OK_BUTTON, TDCBF_YES_BUTTON,
+	let (style, fallback) = match buttons {
+		MessageButtons::Ok => (MB_OK, MessageResponse::Ok),
+		MessageButtons::OkCancel => (MB_OKCANCEL, MessageResponse::Cancel),
+		MessageButtons::YesNo => (MB_YESNO, MessageResponse::No),
+		MessageButtons::YesNoCancel => (MB_YESNOCANCEL, MessageResponse::Cancel),
 	};
-	let (common, default, fallback) = match buttons {
-		MessageButtons::Ok => (TDCBF_OK_BUTTON, IDOK, MessageResponse::Ok),
-		MessageButtons::OkCancel => (
-			TDCBF_OK_BUTTON | TDCBF_CANCEL_BUTTON,
-			IDOK,
-			MessageResponse::Cancel,
-		),
-		MessageButtons::YesNo => (
-			TDCBF_YES_BUTTON | TDCBF_NO_BUTTON,
-			IDYES,
-			MessageResponse::No,
-		),
-		MessageButtons::YesNoCancel => (
-			TDCBF_YES_BUTTON | TDCBF_NO_BUTTON | TDCBF_CANCEL_BUTTON,
-			IDYES,
-			MessageResponse::Cancel,
-		),
+	let icon = match buttons {
+		MessageButtons::Ok => MB_ICONINFORMATION,
+		_ => MB_ICONQUESTION,
 	};
-	let icon = unsafe { LoadIconW(std::ptr::null_mut(), IDI_INFORMATION) };
-	let rc = task_dialog_center_parent(title, text, icon, common, default);
-	Some(match rc {
-		IDOK => MessageResponse::Ok,
-		IDYES => MessageResponse::Yes,
-		IDNO => MessageResponse::No,
-		IDCANCEL => MessageResponse::Cancel,
-		_ => fallback,
-	})
+	let title_w = encode_wide(title);
+	let text_w = encode_wide(text);
+	let owner = crate::owner::current_owner_hwnd();
+	unsafe {
+		// 親ウィンドウ中央への移動用に、このスレッドへ CBT フックを掛ける
+		// (`show_message_box` と同じ手順)。フックプロシージャで移動が済んだ
+		// ら直ちに外す。
+		let hook = SetWindowsHookExW(
+			WH_CBT,
+			Some(message_box_center_hook),
+			std::ptr::null_mut(),
+			GetCurrentThreadId(),
+		);
+		let hook_active = !hook.is_null();
+		if hook_active {
+			MSGBOX_CENTER_STATE.with(|s| s.set(Some((hook, owner))));
+		}
+		let rc = MessageBoxW(owner, text_w.as_ptr(), title_w.as_ptr(), style | icon);
+		if hook_active {
+			let _ = UnhookWindowsHookEx(hook);
+			MSGBOX_CENTER_STATE.with(|s| s.set(None));
+		}
+		Some(match rc {
+			IDOK => MessageResponse::Ok,
+			IDYES => MessageResponse::Yes,
+			IDNO => MessageResponse::No,
+			IDCANCEL => MessageResponse::Cancel,
+			_ => fallback,
+		})
+	}
 }
 
 #[cfg(target_os = "linux")]
