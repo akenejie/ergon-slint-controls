@@ -155,16 +155,24 @@ impl ModalMode {
 /// OK / キャンセルを [`accept`](ModalChild::accept) / [`cancel`](ModalChild::cancel)
 /// としてダイアログへ返してくる。
 pub trait ModalChild: 'static {
-	/// このダイアログの Slint ウィンドウ ハンドル。
+	/// こ�Eダイアログの Slint ウィンドウ ハンドル、E
 	fn window(&self) -> &slint::Window;
-	/// 表示する。
+	/// 表示する、E
 	fn show(&self) -> Result<(), slint::PlatformError>;
-	/// 隠す (破棄の前段)。
+	/// 隠ぁE(破棁E�E前段)、E
 	fn hide(&self) -> Result<(), slint::PlatformError>;
-	/// 確定 (Enter / OK ボタン) をダイアログへ伝える。
+	/// 確宁E(Enter / OK ボタン) をダイアログへ伝える、E
 	fn accept(&self);
-	/// キャンセル (Esc / 閉じるボタン / CloseRequested) をダイアログへ伝える。
+	/// キャンセル (Esc / 閉じる�Eタン / CloseRequested) をダイアログへ伝える、E
 	fn cancel(&self);
+	/// ウィンドウ イベントの事前処理 (アプリ固有のキー操作など)。モーダル
+	/// ウィンドウがイベントを受け取るたび、ergon 既定の処理 (CloseRequested /
+	/// Esc / Enter の読み替え) の**前に**呼ばれる。`PreventDefault` を返すと
+	/// ergon 既定の処理は行われない (イベントは slint へも渡らない)。
+	/// アクセスキー付きラベルの発火など、ダイアログ固有のキー操作に使う。
+	fn window_event(&self, _event: &slint::winit_030::winit::event::WindowEvent) -> slint::winit_030::EventResult {
+		slint::winit_030::EventResult::Propagate
+	}
 }
 
 /// メインウィンドウ内オーバーレイ モーダルのホスト側抽象。

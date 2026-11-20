@@ -342,6 +342,11 @@ fn install_event_hook(slot: &ModalSlot) {
 		let Some(slot) = weak.upgrade() else { return EventResult::Propagate };
 		let child = slot.borrow().as_ref().map(|s| s.child.clone());
 		let Some(child) = child else { return EventResult::Propagate };
+		// アプリ側の事前処理 (ModalChild::window_event)。PreventDefault なら
+		// ergon 既定の処理 (CloseRequested / Esc / Enter の読み替え) を省略する。
+		if let EventResult::PreventDefault = child.window_event(event) {
+			return EventResult::PreventDefault;
+		}
 	// (X11/macOS) slint バックエンドは生成直後にホストのカラースキームを新
 	// 規ウィンドウへ流し込み (winitwindowadapter の create_window)、さらに
 	// XDG 設定のポータル監視が全ウィンドウへ push する。生成時に焼き込んだ
