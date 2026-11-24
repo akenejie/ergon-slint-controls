@@ -213,6 +213,22 @@ pub fn close_overlay(host: &dyn OverlayHost) {
 	host.close();
 }
 
+/// モーダルを開く。表示方式の判断はここで行う:
+/// `mode` が [`ModalMode::InWindowOverlay`] なら `overlay` を開き、
+/// [`ModalMode::ChildWindow`] なら `child` を呼ぶ。子ウィンドウの生成・配線・
+/// [`open_child_modal`] の呼び出しはクロージャ側で行う (オーバーレイ方式では
+/// 呼ばれないため、子ウィンドウの生成コストも発生しない)。
+///
+/// アプリはこの 1 API だけを呼べばよく、方式ごとの分岐を書かずに済む。
+/// 方式の値 (プラットフォーム方針) はアプリ側の定数が選ぶ。
+pub fn open_modal(mode: ModalMode, overlay: &dyn OverlayHost, child: impl FnOnce()) {
+	if mode.is_in_window_overlay() {
+		open_overlay(overlay);
+	} else {
+		child();
+	}
+}
+
 /// モーダル中の Esc / Enter を確定・キャンセルへ読み替える共通処理。
 /// 子ウィンドウのイベントフックとオーバーレイのキー フィルタで共有する。
 #[derive(Clone, Copy, PartialEq, Eq)]
