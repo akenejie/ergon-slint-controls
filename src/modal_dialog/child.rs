@@ -227,6 +227,9 @@ pub struct ModalSession {
 	// 破棄 (drop) すると停止する。
 	#[allow(dead_code)]
 	style_timer: Option<slint::Timer>,
+	/// 閉じ処理の「親の再有効化」。open 時に親ウィンドウから作って閉じ込めて
+	/// おくことで、close の呼び出し側は親ウィンドウを保持しなくてよくなる。
+	reenable: Box<dyn Fn()>,
 }
 
 /// 子ダイアログのスロット。閉じたら `None` に戻る (hide ではなく破棄)。
@@ -245,10 +248,10 @@ pub type WeakModalSlot = std::rc::Weak<RefCell<Option<ModalSession>>>;
 /// ライブラリは座標を扱わない。いずれも表示後の座標移動は行わない
 /// (ちらつきの原因)。タイトルバーのテーマは既定で親ウィンドウに揃える。
 /// 閉じるときは必ず [`close_child_modal`] を使う (hide ではなく破棄される)。
-pub fn open_child_modal<P: ComponentHandle + 'static, C: ModalChild>(
+pub fn open_child_modal<P: ComponentHandle + 'static>(
 	slot: &ModalSlot,
 	parent: &P,
-	child: Rc<C>,
+	child: Rc<dyn ModalChild>,
 ) {
 	// 二重オープン ガード (既に開いているときは何もしない)。
 	if slot.borrow().is_some() {
@@ -268,9 +271,17 @@ pub fn open_child_modal<P: ComponentHandle + 'static, C: ModalChild>(
 		};
 		backend::set_next_child_theme(theme);
 	}
+	let parent_weak = parent.as_weak();
 	let session = ModalSession {
 		child: child.clone(),
 		style_timer: start_style_timer(slot),
+		// 親の再有効化は open 時に親ウィンドウから作って閉じ込めておく
+		// (close の呼び出し側が親ウィンドウを保持しなくて済むように)。
+		reenable: Box::new(move || {
+			if let Some(p) = parent_weak.upgrade() {
+				dismiss_modal_dialog(p.window());
+			}
+		}),
 	};
 	*slot.borrow_mut() = Some(session);
 	// Esc = キャンセル / Enter = 確定 / 閉じるボタン = キャンセル を読み替える。
@@ -284,13 +295,19 @@ pub fn open_child_modal<P: ComponentHandle + 'static, C: ModalChild>(
 ///
 /// 親の再有効化は即時に行い、子ウィンドウの破棄はコールバックの実行中に自
 /// ウィンドウを壊さないよう、イベント ループへ戻ってから行う。
-pub fn close_child_modal(slot: &ModalSlot, parent: &slint::Window) {
+pub fn close_child_modal(slot: &ModalSlot) {
 	// 既に閉じているときは何もしない (モーダル解除を二重に適用しない)。
 	if slot.borrow().is_none() {
 		return;
 	}
-	// 親を再有効化してモーダルを解除する。
-	dismiss_modal_dialog(parent);
+	// 親を再有効化してモーダルを解除する (親の再有効化は open 時に
+	// ModalSession へ閉じ込めてある)。
+	{
+		let guard = slot.borrow();
+		if let Some(session) = guard.as_ref() {
+			(session.reenable)();
+		}
+	}
 	let slot = slot.clone();
 	slint::Timer::single_shot(std::time::Duration::ZERO, move || {
 		let Some(session) = slot.borrow_mut().take() else { return };

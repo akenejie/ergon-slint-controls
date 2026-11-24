@@ -120,6 +120,9 @@ pub use child::{
 	open_child_modal, ModalSession, ModalSlot, WeakModalSlot,
 };
 
+use std::rc::Rc;
+use slint::ComponentHandle;
+
 // --- 表示方式 (アプリ側の定数が選ぶ。ライブラリは方式を知らない) ---
 
 /// モーダルの表示方式。
@@ -213,19 +216,91 @@ pub fn close_overlay(host: &dyn OverlayHost) {
 	host.close();
 }
 
-/// モーダルを開く。表示方式の判断はここで行う:
-/// `mode` が [`ModalMode::InWindowOverlay`] なら `overlay` を開き、
-/// [`ModalMode::ChildWindow`] なら `child` を呼ぶ。子ウィンドウの生成・配線・
-/// [`open_child_modal`] の呼び出しはクロージャ側で行う (オーバーレイ方式では
-/// 呼ばれないため、子ウィンドウの生成コストも発生しない)。
+/// モーダルの開閉を担うハンドル (表示方式をカプセル化する)。
 ///
-/// アプリはこの 1 API だけを呼べばよく、方式ごとの分岐を書かずに済む。
-/// 方式の値 (プラットフォーム方針) はアプリ側の定数が選ぶ。
-pub fn open_modal(mode: ModalMode, overlay: &dyn OverlayHost, child: impl FnOnce()) {
-	if mode.is_in_window_overlay() {
-		open_overlay(overlay);
-	} else {
-		child();
+/// アプリはダイアログごとに 1 つ作り ([`ModalController::new`])、
+/// [`open`](ModalController::open) で開き、OK / キャンセル ハンドラの中で
+/// [`close`](ModalController::close) する。表示方式 ([`ModalMode`]) の判断、
+/// 二重オープン ガード、子ウィンドウのモーダル スタック ([`ModalSlot`]) は
+/// ライブラリが担うため、アプリには方式ごとの分岐もスロット管理も現れない。
+#[derive(Clone)]
+pub struct ModalController {
+	inner: std::rc::Rc<std::cell::RefCell<ControllerInner>>,
+}
+
+struct ControllerInner {
+	mode: ModalMode,
+	/// オーバーレイ方式: 開閉はホストへ委ねる。
+	host: Rc<dyn OverlayHost>,
+	/// 子ウィンドウ方式: ライブラリが所有するモーダル スロット
+	/// (オーバーレイ方式では不使用)。
+	slot: ModalSlot,
+}
+
+impl ModalController {
+	/// ダイアログごとのコントローラを作る。
+	pub fn new(mode: ModalMode, host: Rc<dyn OverlayHost>) -> Self {
+		Self {
+			inner: std::rc::Rc::new(std::cell::RefCell::new(ControllerInner {
+				mode,
+				host,
+				slot: Default::default(),
+			})),
+		}
+	}
+
+	/// モーダルが開いているか。
+	pub fn is_open(&self) -> bool {
+		let inner = self.inner.borrow();
+		match inner.mode {
+			ModalMode::InWindowOverlay => inner.host.is_open(),
+			ModalMode::ChildWindow => inner.slot.borrow().is_some(),
+		}
+	}
+
+	/// モーダルを開く (二重オープン ガード付き)。
+	///
+	/// - オーバーレイ方式: `make_child` は呼ばれず、ホストのオーバーレイを開く
+	///   ([`open_overlay`])。
+	/// - 子ウィンドウ方式: 親ウィンドウへの登録を済ませた上で `make_child` を
+	///   呼び、戻り値を子ダイアログとして開く ([`open_child_modal`])。
+	///   コントローラは `make_child` へ渡されるので、OK / キャンセル ハンドラの
+	///   中から [`close`](Self::close) できる。`make_child` が `None` を返した
+	///   (生成に失敗した) ときは何も開かない。
+	pub fn open<P: ComponentHandle + 'static>(
+		&self,
+		parent: &P,
+		make_child: impl FnOnce(&ModalController) -> Option<Rc<dyn ModalChild>>,
+	) {
+		// 二重オープン ガード (inner の borrow の外で判定する)。
+		if self.is_open() {
+			return;
+		}
+		let inner = self.inner.borrow();
+		match inner.mode {
+			ModalMode::InWindowOverlay => {
+				open_overlay(&*inner.host);
+			}
+			ModalMode::ChildWindow => {
+				// 次のウィンドウ生成がこの親のモーダル子ダイアログだとライブラリ
+				// へ伝える (X11 では transient 親も生成時に焼き込む)。
+				backend::mark_next_child_dialog_of(parent.window());
+				let Some(child) = make_child(self) else { return };
+				open_child_modal(&inner.slot, parent, child);
+			}
+		}
+	}
+
+	/// モーダルを閉じる (表示方式によらない。既に閉じていれば何もしない)。
+	///
+	/// オーバーレイ方式ではホストの close を、子ウィンドウ方式ではモーダル解除
+	/// と子ウィンドウの破棄を行う。
+	pub fn close(&self) {
+		let inner = self.inner.borrow();
+		match inner.mode {
+			ModalMode::InWindowOverlay => inner.host.close(),
+			ModalMode::ChildWindow => close_child_modal(&inner.slot),
+		}
 	}
 }
 
