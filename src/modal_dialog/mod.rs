@@ -173,18 +173,11 @@ pub trait ModalChild: 'static {
 	}
 }
 
-/// オーバーレイ方式の「表示面」。メインウィンドウが **1 回だけ**実装する
-/// (ダイアログごとではない)。`key` でどのダイアログのオーバーレイかを区別し、
-/// 実装側はその key のオーバーレイ UI (ライブラリの `ModalOverlay` コンポーネ
-/// ントにダイアログのフォームを置いたもの) の表示を切り替える。
-pub trait OverlaySurface: 'static {
-	/// `key` のオーバーレイを表示する (他の key の表示は消してよい)。
-	fn show(&self, key: i32);
-	/// オーバーレイをすべて隠す。
-	fn hide(&self);
-	/// 現在表示中の key (表示なければ 0)。
-	fn showing(&self) -> i32;
-}
+/// オーバーレイ方式の表示面のハブ。slint ライブラリの `ModalOverlayHub`
+/// グローバル (表示中のダイアログの key) の実体で、アプリの MainWindow が
+/// 1 つ持つ。`ModalController::new` へアプリから渡され、ライブラリが
+/// open / close で書き込む (`ModalPopupHost` / `ModalDialogHost` が読む)。
+pub type OverlayHub = core::pin::Pin<std::rc::Rc<crate::generated::InnerModalOverlayHub>>;
 
 /// モーダルの開閉を担うハンドル (表示方式をカプセル化する)。
 ///
@@ -200,9 +193,10 @@ pub struct ModalController {
 
 struct ControllerInner {
 	mode: ModalMode,
-	/// オーバーレイ方式: 表示面 (メインウィンドウが 1 つ実装する)。
-	surface: Rc<dyn OverlaySurface>,
-	/// オーバーレイ方式: このダイアログの表示面での key
+	/// オーバーレイ方式: 表示面のハブ (メインウィンドウの ModalOverlayHub
+	/// グローバルの実体)。
+	overlay_hub: OverlayHub,
+	/// オーバーレイ方式: このダイアログの key
 	/// (子ウィンドウ方式では不使用)。
 	key: i32,
 	/// 子ウィンドウ方式: ライブラリが所有するモーダル スロット。
@@ -210,13 +204,15 @@ struct ControllerInner {
 }
 
 impl ModalController {
-	/// ダイアログごとのコントローラを作る。`key` はオーバーレイ方式で
-	/// `surface` へ渡す表示面の識別子 (子ウィンドウ方式では不使用)。
-	pub fn new(mode: ModalMode, surface: Rc<dyn OverlaySurface>, key: i32) -> Self {
+	/// ダイアログごとのコントローラを作る。`overlay_hub` はメインウィンドウの
+	/// `ModalOverlayHub` グローバルの実体
+	/// (`ui.global::<ModalOverlayHub>().0.clone()`)、`key` はオーバーレイ方式で
+	/// このダイアログの表示に使う識別子 (子ウィンドウ方式では不使用)。
+	pub fn new(mode: ModalMode, overlay_hub: OverlayHub, key: i32) -> Self {
 		Self {
 			inner: std::rc::Rc::new(std::cell::RefCell::new(ControllerInner {
 				mode,
-				surface,
+				overlay_hub,
 				key,
 				slot: Default::default(),
 			})),
@@ -227,7 +223,11 @@ impl ModalController {
 	pub fn is_open(&self) -> bool {
 		let inner = self.inner.borrow();
 		match inner.mode {
-			ModalMode::InWindowOverlay => inner.surface.showing() == inner.key,
+			ModalMode::InWindowOverlay => {
+				crate::generated::ModalOverlayHub(inner.overlay_hub.clone(), core::marker::PhantomData)
+					.get_open_key()
+					== inner.key
+			}
 			ModalMode::ChildWindow => inner.slot.borrow().is_some(),
 		}
 	}
@@ -235,7 +235,7 @@ impl ModalController {
 	/// モーダルを開く (二重オープン ガード付き)。
 	///
 	/// - オーバーレイ方式: `make_child` は呼ばれず、表示面の `key` の
-	///   オーバーレイを表示する。
+	///   オーバーレイを表示する (ModalOverlayHub.open-key への書き込み)。
 	/// - 子ウィンドウ方式: 親ウィンドウへの登録を済ませた上で `make_child` を
 	///   呼び、戻り値を子ダイアログとして開く ([`open_child_modal`])。
 	///   コントローラは `make_child` へ渡されるので、OK / キャンセル ハンドラの
@@ -253,7 +253,7 @@ impl ModalController {
 		let inner = self.inner.borrow();
 		match inner.mode {
 			ModalMode::InWindowOverlay => {
-				inner.surface.show(inner.key);
+				inner.overlay_hub.open_key.set(inner.key);
 			}
 			ModalMode::ChildWindow => {
 				// 次のウィンドウ生成がこの親のモーダル子ダイアログだとライブラリ
@@ -272,7 +272,10 @@ impl ModalController {
 	pub fn close(&self) {
 		let inner = self.inner.borrow();
 		match inner.mode {
-			ModalMode::InWindowOverlay => inner.surface.hide(),
+			ModalMode::InWindowOverlay => {
+			crate::generated::ModalOverlayHub(inner.overlay_hub.clone(), core::marker::PhantomData)
+				.set_open_key(0);
+		}
 			ModalMode::ChildWindow => close_child_modal(&inner.slot),
 		}
 	}

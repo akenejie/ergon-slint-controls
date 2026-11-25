@@ -63,7 +63,7 @@ pub struct ergon_slint_controlsSharedGlobals {
 	/// ui/menu-base.slint / ui/menu.slint / ui/tooltip.slint で export している
 	/// グローバルの実体 (アプリの生成コードが SharedGlobals 構築時に読む。
 	/// アプリがライブラリを参照すると全エクスポート グローバルが
-	/// from_library になるため、生成コードが読むフィールドはこの 6 つで固定。
+	/// from_library になるため、生成コードが読むフィールドはこの 8 つで固定。
 	/// グローバルを増やすときはここも更新する)。
 	pub global_AccessKeyHub: core::pin::Pin<std::rc::Rc<generated::InnerAccessKeyHub>>,
 	pub global_MenuAccessKey: core::pin::Pin<std::rc::Rc<generated::InnerMenuAccessKey>>,
@@ -72,6 +72,7 @@ pub struct ergon_slint_controlsSharedGlobals {
 	pub global_MenuKeyControl: core::pin::Pin<std::rc::Rc<generated::InnerMenuKeyControl>>,
 	pub global_MenuBarTheme: core::pin::Pin<std::rc::Rc<generated::InnerMenuBarTheme>>,
 	pub global_TooltipHub: core::pin::Pin<std::rc::Rc<generated::InnerTooltipHub>>,
+	pub global_ModalOverlayHub: core::pin::Pin<std::rc::Rc<generated::InnerModalOverlayHub>>,
 	inner: sp::Rc<generated::ergon_slint_controlsSharedGlobals>,
 }
 
@@ -96,6 +97,7 @@ impl ergon_slint_controlsSharedGlobals {
 			global_MenuKeyControl: inner.global_MenuKeyControl.clone(),
 			global_MenuBarTheme: inner.global_MenuBarTheme.clone(),
 			global_TooltipHub: inner.global_TooltipHub.clone(),
+			global_ModalOverlayHub: inner.global_ModalOverlayHub.clone(),
 			inner,
 		})
 	}

@@ -1,11 +1,42 @@
-// モーダルのオーバーレイ表示面 (InWindowOverlay 方式の見た目)。
+// モーダルのオーバーレイ表示面 (InWindowOverlay 方式)。
 //
-// アプリのメインウィンドウが配置し、中身 (@children) にダイアログのフォームを
-// 置く。表示の切替はアプリ側の if 条件 (フラグ) で行い、このコンポーネントは
-// 暗転とパネルの飾りだけを担う (子ウィンドウ方式では使われない)。
+// アプリの MainWindow は ModalPopupHost を 1 つ置き、中身 (@children) に
+// ModalDialogHost で包んだダイアログの画面を置す。表示の切替は
+// ModalOverlayHub.open-key への書き込みだけで行われ (ModalController が
+// 書く)、アプリ側に方式ごとの分岐は現れない。
 
-// 暗転 + 中央パネル。パネルの幅と内容の行間はダイアログに合わせて変えられる。
-export component ModalOverlay {
+// 表示中のダイアログの key (0 = どのポップアップも非表示)。
+// ModalController (Rust) が書き、ModalPopupHost / ModalDialogHost が読む。
+export global ModalOverlayHub {
+	in-out property <int> open-key: 0;
+}
+
+// アプリの MainWindow に 1 つ置くポップアップの土台。@children に
+// ModalDialogHost で包んだダイアログの画面を置す。open-key != 0 のとき
+// 背景を暗転し、ダイアログの外の操作を止める。
+export component ModalPopupHost {
+	// 背景の暗転 (ダイアログの外の操作を止める)。
+	if ModalOverlayHub.open-key != 0 : Rectangle {
+		width: 100%;
+		height: 100%;
+		background: #00000066;
+		TouchArea { width: 100%; height: 100%; }
+	}
+
+	// ダイアログの画面 (各自が open-key で自己表示し、自分で中央に置く)。
+	Rectangle {
+		width: 100%;
+		height: 100%;
+
+		@children
+	}
+}
+
+// ダイアログの画面を包む。open-key が自分の dialog-key と一致するときだけ
+// 中央のパネルとして表示する (非表示の間は描画も入力もない)。
+export component ModalDialogHost {
+	// このダイアログの key (ModalOverlayHub.open-key と比較する)。
+	in property <int> dialog-key;
 	// パネルの見出し (空欄なら出さない)。
 	in property <string> title;
 	// パネルの幅。
@@ -13,29 +44,18 @@ export component ModalOverlay {
 	// パネル内の行間。
 	in property <length> content-spacing: 8px;
 
-	Rectangle {
-		x: 0;
-		y: 0;
-		width: 100%;
-		height: 100%;
-		background: #00000066;
-		// 背面の操作をすべてここで止める (ダイアログの外をクリックしても
-		// 下の UI へ届かない)。
-		TouchArea { width: 100%; height: 100%; }
-	}
+	width: 100%;
+	height: 100%;
+	visible: ModalOverlayHub.open-key == root.dialog-key;
 
 	HorizontalLayout {
-		x: 0;
-		y: 0;
-		width: 100%;
-		height: 100%;
 		alignment: center;
 
 		VerticalLayout {
-			width: root.panel-width;
 			alignment: center;
 
 			Rectangle {
+				width: root.panel-width;
 				background: #f7f7f7;
 				border-radius: 4px;
 				border-width: 1px;

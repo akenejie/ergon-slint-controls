@@ -1,5 +1,5 @@
 import { AppTooltip } from "project-tooltip.slint";
-import { ModalOverlay } from "modal-overlay.slint";
+import { ModalOverlayHub, ModalPopupHost, ModalDialogHost } from "modal-overlay.slint";
 import { AccessKeyParts, MenuAccessKey, AccessKeyHub, MenuHintHub, MenuOpenHub, AccessKeyLabel, MenuBarItemBase, MenuBarBase, MenuFrameBase, MenuItemBase } from "menu-base.slint";
 import { Label } from "label.slint";
 import { FluentMenuBar, FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, FluentMenuItem, MenuItemView, MenuHintPopup, MenuDismissLayer, MenuBarTheme, MenuKeyControl, MenuBarMenu } from "menu.slint";
@@ -13,7 +13,9 @@ import { ScrollView } from "scrollview.slint";
 import { TooltipHub, TooltipSensor, TooltipPopup, PanelPlacement } from "tooltip.slint";
 
 export {
-	ModalOverlay,
+	ModalOverlayHub,
+	ModalPopupHost,
+	ModalDialogHost,
 	AppTooltip,
 	AccessKeyParts,
 	MenuAccessKey,
