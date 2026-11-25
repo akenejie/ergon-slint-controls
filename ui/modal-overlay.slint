@@ -1,0 +1,64 @@
+// モーダルのオーバーレイ表示面 (InWindowOverlay 方式の見た目)。
+//
+// アプリのメインウィンドウが配置し、中身 (@children) にダイアログのフォームを
+// 置く。表示の切替はアプリ側の if 条件 (フラグ) で行い、このコンポーネントは
+// 暗転とパネルの飾りだけを担う (子ウィンドウ方式では使われない)。
+
+// 暗転 + 中央パネル。パネルの幅と内容の行間はダイアログに合わせて変えられる。
+export component ModalOverlay {
+	// パネルの見出し (空欄なら出さない)。
+	in property <string> title;
+	// パネルの幅。
+	in property <length> panel-width: 380px;
+	// パネル内の行間。
+	in property <length> content-spacing: 8px;
+
+	Rectangle {
+		x: 0;
+		y: 0;
+		width: 100%;
+		height: 100%;
+		background: #00000066;
+		// 背面の操作をすべてここで止める (ダイアログの外をクリックしても
+		// 下の UI へ届かない)。
+		TouchArea { width: 100%; height: 100%; }
+	}
+
+	HorizontalLayout {
+		x: 0;
+		y: 0;
+		width: 100%;
+		height: 100%;
+		alignment: center;
+
+		VerticalLayout {
+			width: root.panel-width;
+			alignment: center;
+
+			Rectangle {
+				background: #f7f7f7;
+				border-radius: 4px;
+				border-width: 1px;
+				border-color: #cccccc;
+				drop-shadow-blur: 8px;
+				drop-shadow-color: #00000040;
+				drop-shadow-offset-x: 0px;
+				drop-shadow-offset-y: 2px;
+
+				VerticalLayout {
+					padding: 12px;
+					spacing: root.content-spacing;
+
+					if root.title != "" : Text {
+						text: root.title;
+						font-size: 1rem;
+						font-weight: 600;
+						color: #333333;
+					}
+
+					@children
+				}
+			}
+		}
+	}
+}

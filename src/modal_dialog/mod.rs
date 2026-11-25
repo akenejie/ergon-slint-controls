@@ -58,14 +58,9 @@
 //! - [`ModalMode::ChildWindow`] = 全 OS で子ウィンドウ
 //! - [`ModalMode::InWindowOverlay`] = 全 OS でウィンドウ内オーバーレイ
 //!
-//! アプリ側の分岐はこの定数に対して行う
-//! (`if MODAL_MODE.is_in_window_overlay() { ... }`)。定数はアプリのクレート内
-//! にあるため分岐はコンパイル時に畳み込まれ、release ビルド (LTO) では選ばれ
-//! なかった側の実装も dead-code elimination で除去される。ライブラリの各関数
-//! は方式を知らない (開く / 閉じるだけ)。子ウィンドウ方式の API
-//! ([`backend::prepare_backend`] / [`child::open_child_modal`] 等) と
-//! オーバーレイ方式の API ([`open_overlay`] 等) の呼み分けはアプリの責任で、
-//! その分岐に同じ定数を使う。
+//! アプリはこの定数を [`ModalController::new`] へ渡すだけでよく、方式ごとの
+//! 分岐を書く必要はない。ライブラリが表示面 ([`OverlaySurface`]) か子ウィンド
+//! ウ ([`child::open_child_modal`]) かを判断して開閉する。
 //!
 //! # 子ダイアログのスタイル (アイコン無しのダイアログ枠) — winit フォーク必須
 //!
@@ -178,42 +173,17 @@ pub trait ModalChild: 'static {
 	}
 }
 
-/// メインウィンドウ内オーバーレイ モーダルのホスト側抽象。
-///
-/// アプリはメインウィンドウのオーバーレイ UI (暗転 + 中央パネル) をこの
-/// トレイトで包む。表示の切替と OK / キャンセルの転送だけをアプリが書き、
-/// 二重オープンガードや Esc/Enter の読み替えはライブラリが行う。
-pub trait OverlayHost {
-	/// オーバーレイが表示中か。
-	fn is_open(&self) -> bool;
-	/// オーバーレイを表示する。
-	fn open(&self);
-	/// オーバーレイを隠す。
-	fn close(&self);
-	/// 確定 (Enter / OK ボタン) 時の処理 (保存など)。
-	fn accept(&self);
-	/// キャンセル (Esc / キャンセル ボタン) 時の処理。
-	fn cancel(&self);
-	/// 表示直前の準備 (現在値のダイアログへの同期など)。
-	fn will_open(&self) {}
-}
-
-/// オーバーレイ モーダルを開く (二重オープン ガード付き)。
-///
-/// オーバーレイ方式の API。子ウィンドウ方式のアプリから呼ばないこと。
-pub fn open_overlay(host: &dyn OverlayHost) {
-	if host.is_open() {
-		return;
-	}
-	host.will_open();
-	host.open();
-}
-
-/// オーバーレイ モーダルを閉じる。
-///
-/// オーバーレイ方式の API。子ウィンドウ方式のアプリから呼ばないこと。
-pub fn close_overlay(host: &dyn OverlayHost) {
-	host.close();
+/// オーバーレイ方式の「表示面」。メインウィンドウが **1 回だけ**実装する
+/// (ダイアログごとではない)。`key` でどのダイアログのオーバーレイかを区別し、
+/// 実装側はその key のオーバーレイ UI (ライブラリの `ModalOverlay` コンポーネ
+/// ントにダイアログのフォームを置いたもの) の表示を切り替える。
+pub trait OverlaySurface: 'static {
+	/// `key` のオーバーレイを表示する (他の key の表示は消してよい)。
+	fn show(&self, key: i32);
+	/// オーバーレイをすべて隠す。
+	fn hide(&self);
+	/// 現在表示中の key (表示なければ 0)。
+	fn showing(&self) -> i32;
 }
 
 /// モーダルの開閉を担うハンドル (表示方式をカプセル化する)。
@@ -230,20 +200,24 @@ pub struct ModalController {
 
 struct ControllerInner {
 	mode: ModalMode,
-	/// オーバーレイ方式: 開閉はホストへ委ねる。
-	host: Rc<dyn OverlayHost>,
-	/// 子ウィンドウ方式: ライブラリが所有するモーダル スロット
-	/// (オーバーレイ方式では不使用)。
+	/// オーバーレイ方式: 表示面 (メインウィンドウが 1 つ実装する)。
+	surface: Rc<dyn OverlaySurface>,
+	/// オーバーレイ方式: このダイアログの表示面での key
+	/// (子ウィンドウ方式では不使用)。
+	key: i32,
+	/// 子ウィンドウ方式: ライブラリが所有するモーダル スロット。
 	slot: ModalSlot,
 }
 
 impl ModalController {
-	/// ダイアログごとのコントローラを作る。
-	pub fn new(mode: ModalMode, host: Rc<dyn OverlayHost>) -> Self {
+	/// ダイアログごとのコントローラを作る。`key` はオーバーレイ方式で
+	/// `surface` へ渡す表示面の識別子 (子ウィンドウ方式では不使用)。
+	pub fn new(mode: ModalMode, surface: Rc<dyn OverlaySurface>, key: i32) -> Self {
 		Self {
 			inner: std::rc::Rc::new(std::cell::RefCell::new(ControllerInner {
 				mode,
-				host,
+				surface,
+				key,
 				slot: Default::default(),
 			})),
 		}
@@ -253,15 +227,15 @@ impl ModalController {
 	pub fn is_open(&self) -> bool {
 		let inner = self.inner.borrow();
 		match inner.mode {
-			ModalMode::InWindowOverlay => inner.host.is_open(),
+			ModalMode::InWindowOverlay => inner.surface.showing() == inner.key,
 			ModalMode::ChildWindow => inner.slot.borrow().is_some(),
 		}
 	}
 
 	/// モーダルを開く (二重オープン ガード付き)。
 	///
-	/// - オーバーレイ方式: `make_child` は呼ばれず、ホストのオーバーレイを開く
-	///   ([`open_overlay`])。
+	/// - オーバーレイ方式: `make_child` は呼ばれず、表示面の `key` の
+	///   オーバーレイを表示する。
 	/// - 子ウィンドウ方式: 親ウィンドウへの登録を済ませた上で `make_child` を
 	///   呼び、戻り値を子ダイアログとして開く ([`open_child_modal`])。
 	///   コントローラは `make_child` へ渡されるので、OK / キャンセル ハンドラの
@@ -279,7 +253,7 @@ impl ModalController {
 		let inner = self.inner.borrow();
 		match inner.mode {
 			ModalMode::InWindowOverlay => {
-				open_overlay(&*inner.host);
+				inner.surface.show(inner.key);
 			}
 			ModalMode::ChildWindow => {
 				// 次のウィンドウ生成がこの親のモーダル子ダイアログだとライブラリ
@@ -293,12 +267,12 @@ impl ModalController {
 
 	/// モーダルを閉じる (表示方式によらない。既に閉じていれば何もしない)。
 	///
-	/// オーバーレイ方式ではホストの close を、子ウィンドウ方式ではモーダル解除
-	/// と子ウィンドウの破棄を行う。
+	/// オーバーレイ方式では表示面を隠し、子ウィンドウ方式ではモーダル解除と
+	/// 子ウィンドウの破棄を行う。
 	pub fn close(&self) {
 		let inner = self.inner.borrow();
 		match inner.mode {
-			ModalMode::InWindowOverlay => inner.host.close(),
+			ModalMode::InWindowOverlay => inner.surface.hide(),
 			ModalMode::ChildWindow => close_child_modal(&inner.slot),
 		}
 	}
@@ -325,24 +299,24 @@ pub(crate) fn modal_key_action(
 
 /// メインウィンドウの winit イベント フックから呼ぶ。
 ///
-/// オーバーレイ表示中は Esc = [`cancel`](OverlayHost::cancel) /
-/// Enter = [`accept`](OverlayHost::accept) をホストへ転送し、それ以外のキーも
+/// オーバーレイ表示中は Esc = [`close`](ModalController::close) /
+/// Enter = `accept` (確定処理: 適用して閉じるなど) を行い、それ以外のキーも
 /// 含めてすべて拾う (下の UI に届かないようにする)。戻り値が `true` のとき
 /// 呼び出し側は `EventResult::PreventDefault` を返してイベントを破棄すること。
 /// オーバーレイ非表示中は `false` を返し、アプリ本来のキー処理を続行させる。
-/// オーバーレイ方式の API。子ウィンドウ方式のアプリから呼ばないこと。
 pub fn overlay_key_filter(
-	host: &dyn OverlayHost,
+	ctl: &ModalController,
 	code: slint::winit_030::winit::keyboard::KeyCode,
 	repeat: bool,
+	accept: impl FnOnce(),
 ) -> bool {
-	if !host.is_open() {
+	if !ctl.is_open() {
 		return false;
 	}
 	if !repeat {
 		match modal_key_action(code) {
-			Some(ModalKeyAction::Cancel) => host.cancel(),
-			Some(ModalKeyAction::Accept) => host.accept(),
+			Some(ModalKeyAction::Cancel) => ctl.close(),
+			Some(ModalKeyAction::Accept) => accept(),
 			None => {}
 		}
 	}
