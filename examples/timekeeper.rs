@@ -26,7 +26,8 @@
 // 同じ (README の「参照方法の要点」を参照)。
 
 use ergon_slint_controls::{MenuHintHub, MenuKeyControl, MenuOpenHub, SessionEntry, TimeKeeperExport, TimeKeeperWindow, TooltipHub};
-use ergon_slint_controls::modal_dialog::{ModalMode, OverlayHost as _};
+use ergon_slint_controls::modal_dialog::ModalMode;
+
 
 /// このサンプルのモーダル表示方式。全 OS (win/linux/macos) 共に子ウィンドウ
 /// に固定する (オーバーレイに戻したければ InWindowOverlay に変える。
@@ -100,37 +101,6 @@ impl ergon_slint_controls::modal_dialog::ModalChild for ExportDialog {
 	}
 	fn cancel(&self) {
 		self.0.invoke_cancel();   // Esc / 閉じるボタン / CloseRequested をキャンセルへ
-	}
-}
-
-/// ウィンドウ内オーバーレイ方式の「書き出す」パネルのホスト。
-/// 表示の切り替えと確定 / キャンセルの転送だけを書き、二重オープン ガードや
-/// Esc/Enter の読み替えは modal_dialog が行う。
-struct ExportOverlayHost {
-	weak: slint::Weak<TimeKeeperWindow>,
-	do_export: Rc<dyn Fn()>,
-}
-
-impl ergon_slint_controls::modal_dialog::OverlayHost for ExportOverlayHost {
-	fn is_open(&self) -> bool {
-		self.weak.upgrade().map_or(false, |ui| ui.get_export_overlay_visible())
-	}
-	fn open(&self) {
-		if let Some(ui) = self.weak.upgrade() {
-			ui.set_export_overlay_visible(true);
-		}
-	}
-	fn close(&self) {
-		if let Some(ui) = self.weak.upgrade() {
-			ui.set_export_overlay_visible(false);
-		}
-	}
-	fn accept(&self) {
-		(self.do_export)();
-		self.close();
-	}
-	fn cancel(&self) {
-		self.close();
 	}
 }
 
@@ -314,74 +284,67 @@ fn main() -> Result<(), slint::PlatformError> {
 	};
 
 	// ---------- 「書き出す」ダイアログ ----------
-	let export_slot: ergon_slint_controls::modal_dialog::ModalSlot = Default::default();
-	let export_overlay_host = Rc::new(ExportOverlayHost {
-		weak: ui.as_weak(),
-		do_export: do_export.clone(),
-	});
+	// オーバーレイ方式の表示面 (ModalOverlayHub の実体) とダイアログごとの
+	// コントローラ。表示方式の判断・二重オープン ガード・モーダル スタックは
+	// modal_dialog が担う。閉じるには OK / キャンセル ハンドラ内で close を呼ぶ。
+	let export_ctl = ergon_slint_controls::modal_dialog::ModalController::new(
+		MODAL_MODE,
+		ui.global::<ergon_slint_controls::ModalOverlayHub>().0.clone(),
+		1, // timekeeper.slint の ModalDialogHost の dialog-key
+	);
 	{
-		let host = export_overlay_host.clone();
-		ui.on_export_ok(move || host.accept());
+		let apply = do_export.clone();
+		let ctl = export_ctl.clone();
+		ui.on_export_ok(move || {
+			apply();
+			ctl.close();
+		});
 	}
 	{
-		let host = export_overlay_host.clone();
-		ui.on_export_cancel(move || host.cancel());
+		let ctl = export_ctl.clone();
+		ui.on_export_cancel(move || ctl.close());
 	}
 
-	/// 子ウィンドウ方式で「書き出す」ダイアログを開く。
+	/// モーダル (子ウィンドウ / オーバーレイ) で「書き出す」ダイアログを開く。
+	/// 表示方式の判断・二重オープン ガード・モーダル スタックは modal_dialog
+	/// (ModalController) が担う。閉じるには OK / キャンセル ハンドラ内で
+	/// close を呼ぶ。
 	fn open_export(
 		main: &TimeKeeperWindow,
-		slot: &ergon_slint_controls::modal_dialog::ModalSlot,
+		ctl: &ergon_slint_controls::modal_dialog::ModalController,
 		do_export: Rc<dyn Fn()>,
 	) {
-		if MODAL_MODE.is_in_window_overlay() {
-			// メインウィンドウ内のオーバーレイで開く (二重オープン ガード付き)。
-			let host = ExportOverlayHost { weak: main.as_weak(), do_export };
-			ergon_slint_controls::modal_dialog::open_overlay(&host);
-			return;
-		}
-		// 子ウィンドウ方式: 生成と値の同期はこちら、表示と制御はライブラリ。
-		if slot.borrow().is_some() {
-			return;   // 二重オープン ガード (ライブラリ側にも同じガードがある)
-		}
-		// 次のウィンドウ生成がこのウィンドウのモーダル子ダイアログだとライブラ
-		// リへ伝える (X11 では transient 親も生成時に焼き込む)。
-		ergon_slint_controls::modal_dialog::mark_next_child_dialog_of(main.window());
+		ctl.open(main, |ctl| {
+			// 子ウィンドウ方式のときだけ呼ばれる。
+			let Ok(dlg) = TimeKeeperExport::new() else { return None };
+			// 表示直前に現在値を同期する。
+			dlg.set_comma(main.get_export_comma());
+			dlg.set_header(main.get_export_header());
+			dlg.set_bom(main.get_export_bom());
 
-		let Ok(dlg) = TimeKeeperExport::new() else { return };
-		// 表示直前に現在値を同期する。
-		dlg.set_comma(main.get_export_comma());
-		dlg.set_header(main.get_export_header());
-		dlg.set_bom(main.get_export_bom());
-
-		// 確定: 値を書き戻してから書き出す (破棄はライブラリ)。
-		{
-			let slot = slot.clone();
-			let main_weak = main.as_weak();
-			let weak = dlg.as_weak();
-			let do_export = do_export.clone();
-			dlg.on_ok(move || {
-				if let (Some(d), Some(m)) = (weak.upgrade(), main_weak.upgrade()) {
-					m.set_export_comma(d.get_comma());
-					m.set_export_header(d.get_header());
-					m.set_export_bom(d.get_bom());
-					ergon_slint_controls::modal_dialog::close_child_modal(&slot, m.window());
-					do_export();
-				}
-			});
-		}
-		// キャンセル: 値を捨てて閉じる。
-		{
-			let slot = slot.clone();
-			let main_weak = main.as_weak();
-			dlg.on_cancel(move || {
-				if let Some(m) = main_weak.upgrade() {
-					ergon_slint_controls::modal_dialog::close_child_modal(&slot, m.window());
-				}
-			});
-		}
-		// 表示とモーダル化 (Esc/Enter・中央配置・破棄) はライブラリへ任せる。
-		ergon_slint_controls::modal_dialog::open_child_modal(slot, main, Rc::new(ExportDialog(dlg)));
+			// 確定: 値を書き戻してから書き出す (閉じる API は ergon)。
+			{
+				let main_weak = main.as_weak();
+				let weak = dlg.as_weak();
+				let do_export = do_export.clone();
+				let ctl = ctl.clone();
+				dlg.on_ok(move || {
+					if let (Some(d), Some(m)) = (weak.upgrade(), main_weak.upgrade()) {
+						m.set_export_comma(d.get_comma());
+						m.set_export_header(d.get_header());
+						m.set_export_bom(d.get_bom());
+						do_export();
+						ctl.close();
+					}
+				});
+			}
+			// キャンセル: 値を捨てて閉じる (閉じる API は ergon)。
+			{
+				let ctl = ctl.clone();
+				dlg.on_cancel(move || ctl.close());
+			}
+			Some(Rc::new(ExportDialog(dlg)))
+		});
 	}
 
 	// ---------- メニューのコールバック ----------
@@ -394,10 +357,11 @@ fn main() -> Result<(), slint::PlatformError> {
 	}
 	{
 		let weak = ui.as_weak();
-		let slot = export_slot.clone();
 		let save_dir = save_dir.clone();
 		let sessions = sessions.clone();
 		let start_stop = start_stop.clone();
+		let export_ctl = export_ctl.clone();
+		let do_export = do_export.clone();
 		ui.on_menu_item_clicked(move |id| {
 			let Some(ui) = weak.upgrade() else { return };
 			// ブロックしない即時処理: メニューを閉じた更新と同じフレームに
@@ -446,7 +410,7 @@ fn main() -> Result<(), slint::PlatformError> {
 					// 呼び出しのたびに必要な状態を clone して遅延クロージャへ渡す。
 					let weak2 = weak.clone();
 					let save_dir = save_dir.clone();
-					let slot = slot.clone();
+					let export_ctl = export_ctl.clone();
 					let do_export = do_export.clone();
 					let start_stop = start_stop.clone();
 					ergon_slint_controls::menu::defer_action(&ui, move || {
@@ -458,7 +422,7 @@ fn main() -> Result<(), slint::PlatformError> {
 								ui.set_hint_text(slint::format!("保存先: {}", dir.display()).into());
 							}
 						}
-						"--csv" => open_export(&ui, &slot, do_export.clone()),
+						"--csv" => open_export(&ui, &export_ctl, do_export.clone()),
 						"--exit" => {
 							// 実行中ならカスタム ボタンで尋ねる (選択 index を返す)。
 							if ui.get_running() {
@@ -594,7 +558,19 @@ fn main() -> Result<(), slint::PlatformError> {
 
 		// オーバーレイ式モーダル表示中のキー (Esc=キャンセル / Enter=確定、
 		// 他は握り潰し) は modal_dialog へ委譲する。
-		if ergon_slint_controls::modal_dialog::overlay_key_filter(&*export_overlay_host, code, key_event.repeat) {
+		if ergon_slint_controls::modal_dialog::overlay_key_filter(
+			&export_ctl,
+			code,
+			key_event.repeat,
+			{
+				let apply = do_export.clone();
+				let ctl = export_ctl.clone();
+				move || {
+					apply();
+					ctl.close();
+				}
+			},
+		) {
 			return EventResult::PreventDefault;
 		}
 

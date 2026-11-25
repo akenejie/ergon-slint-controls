@@ -14,12 +14,12 @@ import {
 	FluentMenuBarImpl, FluentMenuBarItem, FluentMenuFrame, MenuItemView,
 	MenuHintPopup, MenuDismissLayer, TooltipPopup, TooltipHub,
 	Label, SmallButton, ModeToggleButton, CosmicCheckBox, SpinBox, TextBox,
-	TooltipSensor,
+	TooltipSensor, ModalOverlayHub, ModalPopupHost, ModalDialogHost,
 } from "@ergon_slint_controls";
 // 「CSV を書き出す」ダイアログは相対 import で同じコンパイル単位に取り込む
 // (export もここから。timekeeper-export.slint 内のライブラリ参照も
 // @ergon_slint_controls で解決される)。
-import { TimeKeeperExport } from "timekeeper-export.slint";
+import { TimeKeeperExport, TimeKeeperExportForm } from "timekeeper-export.slint";
 import { ListView } from "std-widgets.slint";
 // Tooltip は std-widgets ではなく slint の組み込み要素 (import 不要)。
 
@@ -102,7 +102,6 @@ export component TimeKeeperWindow inherits Window {
 	callback bar-hover(bool);      // 進捗バーの hover (十字カーソルへ切替)
 	callback export-ok();
 	callback export-cancel();
-	in-out property <bool> export-overlay-visible: false;
 
 	// ---- メニューバー ----
 	menu-bar := FluentMenuBarImpl {
@@ -440,68 +439,20 @@ export component TimeKeeperWindow inherits Window {
 		];
 	}
 
-	// ---- 書き出しオプションのオーバーレイ (ウィンドウ内モーダル方式のときに使う) ----
-	if root.export-overlay-visible : Rectangle {
-		background: #00000066;   // 暗転
-		TouchArea { }            // 下への入力を吸う
+	// ---- 書き出しオプションのポップアップ (オーバーレイ方式の表示面) ----
+	// 表示の切替は ModalOverlayHub.open-key (ModalController が書く)。
+	ModalPopupHost {
+		ModalDialogHost {
+			dialog-key: 1;
+			title: "CSV を書き出す";
+			panel-width: 320px;
 
-		Rectangle {
-			width: 320px;
-			height: 210px;
-			x: (parent.width - self.width) / 2;
-			y: (parent.height - self.height) / 2;
-			background: white;
-			border-radius: 6px;
-			drop-shadow-blur: 12px;
-			drop-shadow-color: #00000033;
-
-			VerticalLayout {
-				padding: 16px;
-				spacing: 10px;
-
-				Text { text: "CSV を書き出す"; font-weight: 700; }
-
-				HorizontalLayout {
-					spacing: 6px;
-					Text { text: "区切り:"; vertical-alignment: center; }
-					ModeToggleButton {
-						text: "カンマ";
-						checked: root.export-comma;
-						clicked => { root.export-comma = true; }
-					}
-					ModeToggleButton {
-						text: "タブ";
-						checked: !root.export-comma;
-						clicked => { root.export-comma = false; }
-					}
-				}
-
-				HorizontalLayout {
-					spacing: 6px;
-					Rectangle {
-						width: 16px;
-						height: 16px;
-						CosmicCheckBox { checked: root.export-header; }
-						TouchArea { clicked => { root.export-header = !root.export-header; } }
-					}
-					Text { text: "ヘッダー行"; vertical-alignment: center; font-size: 0.9rem; }
-					Rectangle {
-						width: 16px;
-						height: 16px;
-						CosmicCheckBox { checked: root.export-bom; }
-						TouchArea { clicked => { root.export-bom = !root.export-bom; } }
-					}
-					Text { text: "BOM 付き"; vertical-alignment: center; font-size: 0.9rem; }
-				}
-
-				Rectangle { vertical-stretch: 1; }
-
-				HorizontalLayout {
-					spacing: 8px;
-					Rectangle { horizontal-stretch: 1; }
-					SmallButton { text: "書き出す"; primary: true; clicked => { root.export-ok(); } }
-					SmallButton { text: "キャンセル"; clicked => { root.export-cancel(); } }
-				}
+			TimeKeeperExportForm {
+				comma <=> root.export-comma;
+				header <=> root.export-header;
+				bom <=> root.export-bom;
+				ok => { root.export-ok(); }
+				cancel => { root.export-cancel(); }
 			}
 		}
 	}

@@ -1,23 +1,16 @@
 // じかん君 (サンプル アプリ) の「CSV を書き出す」ダイアログ。
-// examples/timekeeper.rs が modal_dialog::open_child_modal で子ウィンドウとし
-// て表示する。OK / キャンセルの callback と値の in-out property だけを用意し、
-// 表示・Esc/Enter の読み替え・中央配置・破棄は modal_dialog が担う。
-// 注: ライブラリの import 文はファイル内で 1 文にまとめる (timekeeper.slint
-// のコメント参照)。
+//
+// フォーム本体 (TimeKeeperExportForm) はオーバーレイ表示面
+// (timekeeper.slint の ModalPopupHost + ModalDialogHost) と子ウィンドウ
+// (TimeKeeperExport) の両方から使う。値 (comma / header / bom) と確定 /
+// キャンセル (ok / cancel) は呼び出し側がプロパティ / コールバックでつなぐ。
+// 表示方式の判断・二重オープン ガード・モーダル化は modal_dialog が担う。
 
 import { SmallButton, ModeToggleButton, CosmicCheckBox, TooltipPopup } from "@ergon_slint_controls";
 
-export component TimeKeeperExport inherits Window {
-	title: "CSV を書き出す";
-	preferred-width: 320px;
-	preferred-height: 180px;
-
-	// Linux でライブラリがデスクトップ環境の UI フォントを流し込めるように
-	// する宣言 (動的バインディングが必須。timekeeper.slint のコメント参照)。
-	in property <string> ui-font-family: "";
-	default-font-family: root.ui-font-family;
-
-	// 値 (開くときに Rust が同期する)
+// 書き出しオプションのフォーム本体 (表示方式で共有)。
+export component TimeKeeperExportForm {
+	// 値 (書き出しのたびに Rust から読まれる)。
 	in-out property <bool> comma: true;    // 区切り (true=カンマ, false=タブ)
 	in-out property <bool> header: true;   // ヘッダー行
 	in-out property <bool> bom: false;     // BOM 付き (Excel 向け)
@@ -26,7 +19,6 @@ export component TimeKeeperExport inherits Window {
 	callback cancel();
 
 	VerticalLayout {
-		padding: 14px;
 		spacing: 10px;
 
 		HorizontalLayout {
@@ -48,7 +40,7 @@ export component TimeKeeperExport inherits Window {
 
 		HorizontalLayout {
 			spacing: 6px;
-			// 見た目だけのチェックボックス。クリック処理は TouchArea で自前実装。
+			// 項目ごとのチェックボックス。クリック領域は TouchArea で補外する。
 			Rectangle {
 				width: 16px;
 				height: 16px;
@@ -83,9 +75,39 @@ export component TimeKeeperExport inherits Window {
 			}
 		}
 	}
+}
+
+// 子ウィンドウ方式の「CSV を書き出す」ダイアログ。examples/timekeeper.rs が
+// ModalController::open の make_child で生成する。表示・Esc/Enter の読み替え・
+// 中央配置・破棄は modal_dialog が担う。
+export component TimeKeeperExport inherits Window {
+	title: "CSV を書き出す";
+	preferred-width: 320px;
+	preferred-height: 180px;
+
+	// Linux でライブラリがデスクトップ環境の UI フォントを流し込めるように
+	// する宣言 (必須バイディング。timekeeper.slint のコメント参照)。
+	in property <string> ui-font-family: "";
+	default-font-family: root.ui-font-family;
+
+	// 値 (書き出しのたびに Rust が読み書きする)。
+	in-out property <bool> comma: true;    // 区切り (true=カンマ, false=タブ)
+	in-out property <bool> header: true;   // ヘッダー行
+	in-out property <bool> bom: false;     // BOM 付き (Excel 向け)
+
+	callback ok();
+	callback cancel();
+
+	TimeKeeperExportForm {
+		comma <=> root.comma;
+		header <=> root.header;
+		bom <=> root.bom;
+		ok => { root.ok(); }
+		cancel => { root.cancel(); }
+	}
 
 	// ---- コントロールのツールチップ (カーソル追従) ----
-	// ダイアログのウィンドウにもルートの最後に置く (from_library のグローバ
-	// ルはウィンドウごとの実体なので、メイン ウィンドウのレイヤとは混線しない)。
+	// ダイアログのウィンドウにしたルートの末尾に置く (from_library のグローバ
+	// ルはウィンドウごとの実体なので、メイン ウィンドウのものとは分かれる)。
 	TooltipPopup { }
 }
