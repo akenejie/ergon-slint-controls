@@ -48,13 +48,17 @@ export component ModalDialogHost {
 	height: 100%;
 	visible: ModalOverlayHub.open-key == root.dialog-key;
 
+	// デバッグ/診断用: パネルとホストの実高さ。
+	out property <length> panel-height: panel.height;
+	out property <length> host-height: self.height;
+
 	HorizontalLayout {
 		alignment: center;
 
 		VerticalLayout {
 			alignment: center;
 
-			Rectangle {
+			panel := Rectangle {
 				width: root.panel-width;
 				background: #f7f7f7;
 				border-radius: 4px;
